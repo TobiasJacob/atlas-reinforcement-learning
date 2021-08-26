@@ -9,7 +9,7 @@ This project aims to run reinforcement learning models on a real Atlas.
 - [x] Run the simulated Atlas model in `PyBullet`.
 - [ ] Wrap it into an OpenAI-Gym environment.
 - [ ] Create a second backend for the OpenAI-Gym that connects to the real Atlas.
-- [ ] Train a very basic machine learning model with `stable_baselines` in the virtual Gym and run it in the real Gym. Fix most of the joints to zero, except for example the right arm.
+- [ ] Train a very basic machine learning model with `stable_baselines` in the virtual Gym and run it in the real Gym. Fix most of the joints to zero, except, for example, the right arm.
 - [ ] See how the model behaves and decide on further steps.
 
 ## Setup
