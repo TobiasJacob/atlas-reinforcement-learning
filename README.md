@@ -27,7 +27,6 @@ pip install -r requirements.txt
 
 Run the following command to play around with the Atlas Robot in PyBullet.
 
-
 ```console
 python3 atlasrl/simulator/standalone.py
 ```

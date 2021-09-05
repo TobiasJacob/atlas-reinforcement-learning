@@ -14,8 +14,8 @@ for i in range (p.getNumJoints(atlas)):
 	print(p.getJointInfo(atlas,i))
 
 p.loadURDF("plane.urdf",[0,0,-3])
-	
-p.resetDebugVisualizerCamera( cameraDistance=1, cameraYaw=148, cameraPitch=-9, cameraTargetPosition=[0.36,5.3,-0.62])
+
+p.resetDebugVisualizerCamera(cameraDistance=1, cameraYaw=148, cameraPitch=-9, cameraTargetPosition=[0.36,5.3,-0.62])
 
 p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,1)
 
