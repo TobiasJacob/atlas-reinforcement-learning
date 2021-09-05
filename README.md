@@ -33,6 +33,12 @@ python3 atlasrl/simulator/standalone.py
 
 ![alt text](docs/AtlasInPyBullet.png)
 
+For training the model, run
+
+```console
+python3 -m atlasrl
+```
+
 ## State, Actions and Reward
 
 - Observed state is not clear yet.
