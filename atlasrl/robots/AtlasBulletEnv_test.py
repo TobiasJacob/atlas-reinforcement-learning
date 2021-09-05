@@ -5,7 +5,7 @@ def test_AtlasBulletEnv():
 
     for episode in range(10): 
         obs = env.reset()
-        for step in range(5000000):
+        for step in range(5000):
             action = env.action_space.sample()
             obs, reward, done, info = env.step(action)
             env.render("human")
