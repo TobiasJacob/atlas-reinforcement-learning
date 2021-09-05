@@ -26,10 +26,9 @@ class AtlasBulletEnv(gym.Env):
 		for i in range (self._p.getNumJoints(self.atlas)):
 			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, 0)
 		self._p.loadURDF("plane.urdf", [0, 0, -3])
-		self._p.resetDebugVisualizerCamera(cameraDistance=1, cameraYaw=148, cameraPitch=-9, cameraTargetPosition=[0.36, 5.3, -0.62])
 		self._p.setGravity(0,0,-10)
-		self.action_space = gym.spaces.Box(low=0, high=1, shape=(30,))
-		self.observation_space = gym.spaces.Box(low=-1, high=1, shape=(6,))
+		self.action_space = gym.spaces.Box(low=-1, high=1, shape=(30,))
+		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(7,))
 		if os.path.exists("data/initialState.bullet"):
 			self.initialState = self._p.restoreState(fileName="data/initialState.bullet")
 		else:
@@ -48,7 +47,7 @@ class AtlasBulletEnv(gym.Env):
 		obs = np.concatenate((pos, orn))
 		return obs
 
-	def render(self, mode, close=False):
+	def render(self, mode = "human", close=False):
 		if mode == "human":
 			return
 		if mode != "rgb_array":
@@ -56,7 +55,6 @@ class AtlasBulletEnv(gym.Env):
 
 		(_, _, px, _, _) = self._p.getCameraImage(width=480, height=480)
 		rgb_array = np.array(px)
-		rgb_array = rgb_array[:, :, :3]
 		return rgb_array
 
 	def close(self):
@@ -68,4 +66,6 @@ class AtlasBulletEnv(gym.Env):
 			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, targetAngle)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
 		obs = np.concatenate((pos, orn))
-		return obs, 1, False, None
+		reward = pos[2]
+		self._p.resetDebugVisualizerCamera(cameraDistance=1, cameraYaw=148, cameraPitch=-9, cameraTargetPosition=np.array([0.36, 5.3, -0.62]) + pos)
+		return obs, reward, False, {}
