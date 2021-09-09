@@ -8,12 +8,12 @@ path = "data/atlas/atlas_v4_with_multisense.urdf"
 p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
 p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
-atlas = p.loadURDF(path, [-2,3,-0.5])
+atlas = p.loadURDF(path, [-2,3,2.5])
 for i in range (p.getNumJoints(atlas)):
 	p.setJointMotorControl2(atlas,i,p.POSITION_CONTROL,0)
 	print(p.getJointInfo(atlas,i))
 
-p.loadURDF("plane.urdf",[0,0,-3])
+p.loadURDF("plane.urdf",[0,0,0], useFixedBase=True)
 
 p.resetDebugVisualizerCamera(cameraDistance=1, cameraYaw=148, cameraPitch=-9, cameraTargetPosition=[0.36,5.3,-0.62])
 

@@ -22,10 +22,10 @@ class AtlasBulletEnv(gym.Env):
 		else:
 			self._p = BulletClient()
 		self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
-		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [-2, 3, -0.5])
+		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [-2, 3, 2.5])
 		for i in range (self._p.getNumJoints(self.atlas)):
 			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, 0)
-		self._p.loadURDF("plane.urdf", [0, 0, -3])
+		self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
 		self._p.setGravity(0,0,-10)
 		self.action_space = gym.spaces.Box(low=-1, high=1, shape=(30,))
 		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(7,))
@@ -59,7 +59,7 @@ class AtlasBulletEnv(gym.Env):
 
 	def close(self):
 		self._p.disconnect()
-	
+
 	def step(self, action):
 		self._p.stepSimulation()
 		for (i, targetAngle) in enumerate(action):
