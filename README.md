@@ -21,7 +21,7 @@ This project aims to run reinforcement learning models on a real Atlas.
 which python3.7
 virtualenv -p /usr/bin/python3.7 env
 source env/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
 ## Run the code
