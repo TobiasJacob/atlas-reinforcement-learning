@@ -71,7 +71,7 @@ class AtlasBulletEnv(gym.Env):
 			targetAngle /= (self.alpha) # Pink noise 1/f gain compensation
 			filteredAngle = (self.alpha * targetAngle + (1 - self.alpha) * currentAngle)
 			# newPos = self.timeDelta * np.clip(filteredAngle - currentAngle, -0.7, 0.7) + currentAngle # limit speed
-			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, filteredAngle)
+			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, targetAngle, positionGain=100, velocityGain=3)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
 		obs = np.concatenate((pos, orn))
 		reward = pos[1]
