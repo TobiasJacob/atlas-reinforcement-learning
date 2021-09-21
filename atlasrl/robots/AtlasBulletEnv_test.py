@@ -11,6 +11,7 @@ def test_AtlasBulletEnv():
         obs = env.reset()
         for step in range(5000):
             action = env.action_space.sample()
+            action = np.zeros_like(action)
             # for _ in np.arange(0, 1, env.timeDelta):
             obs, reward, done, info = env.step(action)
             env.render("human")

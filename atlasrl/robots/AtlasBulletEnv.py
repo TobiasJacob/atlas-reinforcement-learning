@@ -50,6 +50,7 @@ class AtlasBulletEnv(gym.Env):
 		return obs
 
 	def render(self, mode = "human", close=False):
+		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=45, cameraPitch=-30, cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
 		if mode == "human":
 			return
 		if mode != "rgb_array":
@@ -71,7 +72,7 @@ class AtlasBulletEnv(gym.Env):
 			targetAngle /= (self.alpha) # Pink noise 1/f gain compensation
 			filteredAngle = (self.alpha * targetAngle + (1 - self.alpha) * currentAngle)
 			# newPos = self.timeDelta * np.clip(filteredAngle - currentAngle, -0.7, 0.7) + currentAngle # limit speed
-			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, targetAngle, positionGain=100, velocityGain=3)
+			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, targetAngle, positionGain=0, velocityGain=0)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
 		obs = np.concatenate((pos, orn))
 		reward = pos[1]
