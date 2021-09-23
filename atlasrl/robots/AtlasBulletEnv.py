@@ -37,7 +37,7 @@ class AtlasBulletEnv(gym.Env):
 			self._p.saveBullet("data/initialState.bullet")
 		self.initialState = self._p.saveState()
 		self.timeDelta = self._p.getPhysicsEngineParameters()["fixedTimeStep"]
-		self.alpha = 0.01
+		self.alpha = 0.05
 
 	def seed(self, seed=None):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -69,10 +69,10 @@ class AtlasBulletEnv(gym.Env):
 			(currentAngle, currentVel, _, _) = self._p.getJointState(self.atlas, i)
 			# newVel = currentVel + self.timeDelta * (targetAngle - currentAngle) * 0.5
 			# newAngle = currentAngle + self.timeDelta * newVel
-			targetAngle /= (self.alpha) # Pink noise 1/f gain compensation
+			# targetAngle /= (self.alpha) # Pink noise 1/f gain compensation
 			filteredAngle = (self.alpha * targetAngle + (1 - self.alpha) * currentAngle)
 			# newPos = self.timeDelta * np.clip(filteredAngle - currentAngle, -0.7, 0.7) + currentAngle # limit speed
-			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, targetAngle, positionGain=0, velocityGain=0)
+			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, filteredAngle) #, positionGain=0, velocityGain=0)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
 		obs = np.concatenate((pos, orn))
 		reward = pos[1]

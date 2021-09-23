@@ -47,5 +47,5 @@ while (1):
 
     for i in range(p.getNumJoints(atlas)):
         val = p.readUserDebugParameter(action_selector_ids[i])
-        p.setJointMotorControl2(atlas,i,p.POSITION_CONTROL,val)
+        p.setJointMotorControl2(atlas,i,p.POSITION_CONTROL,val) # , positionGain=5)
 
