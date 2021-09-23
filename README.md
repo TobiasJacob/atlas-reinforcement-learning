@@ -40,6 +40,12 @@ For training the model, run
 python3 -m atlasrl
 ```
 
+For testing the remote, run
+
+```console
+python3 -m atlasrl.robots.AtlasRemoteEnv_test
+```
+
 ## State, Actions and Reward
 
 - Observed state is not clear yet.
