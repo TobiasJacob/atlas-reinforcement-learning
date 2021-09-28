@@ -10,8 +10,9 @@ p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
 p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
 atlas = p.loadURDF(path, [-2,3,2.5])
 for i in range (p.getNumJoints(atlas)):
-	p.setJointMotorControl2(atlas,i,p.POSITION_CONTROL,0)
-	print(p.getJointInfo(atlas,i))
+    p.setJointMotorControl2(atlas,i,p.POSITION_CONTROL,0)
+    info = p.getJointInfo(atlas,i)
+    print("Joint info", i, info)
 
 p.loadURDF("plane.urdf",[0,0,0], useFixedBase=True)
 
@@ -24,7 +25,8 @@ p.getCameraImage(320,200)#, renderer=p.ER_BULLET_HARDWARE_OPENGL )
 print("Num joints", p.getNumJoints(atlas))
 action_selector_ids = []
 for i in range(p.getNumJoints(atlas)):
-    print("Joint info", i, p.getJointInfo(atlas, i))
+    info = p.getJointInfo(atlas,i)
+    print(info[8:10])
     action_selector_id = p.addUserDebugParameter(paramName=str(p.getJointInfo(atlas, i)[1]),
                                                  rangeMin=-1,
                                                  rangeMax=1,

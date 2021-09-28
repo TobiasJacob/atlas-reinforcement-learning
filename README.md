@@ -58,3 +58,6 @@ python3 -m atlasrl.robots.AtlasRemoteEnv_test
 ## Data format
 
 - 1st is dT in secs
+
+## Reference motion player
+python -m atlasrl.simulator.ShowReferenceMotion
