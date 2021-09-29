@@ -1,4 +1,5 @@
 """This is a standalone script to explort how the Atlas model looks like."""
+import numpy as np
 import pybullet as p
 import pybullet_data
 import time,math
@@ -50,4 +51,5 @@ while (1):
     for i in range(p.getNumJoints(atlas)):
         val = p.readUserDebugParameter(action_selector_ids[i])
         p.setJointMotorControl2(atlas,i,p.POSITION_CONTROL,val) # , positionGain=5)
+        p.resetBasePositionAndOrientation(atlas, np.array([0, 0, 1]), [0, 0, 0, 1])
 
