@@ -6,6 +6,7 @@ from pybullet_utils.bullet_client import BulletClient
 import pybullet_data
 
 from pkg_resources import parse_version
+from atlasrl.robots.Constants import gains, parameterNames
 
 
 class AtlasBulletEnv(gym.Env):
@@ -36,8 +37,13 @@ class AtlasBulletEnv(gym.Env):
 				self._p.stepSimulation()
 			self._p.saveBullet("data/initialState.bullet")
 		self.initialState = self._p.saveState()
-		self.timeDelta = self._p.getPhysicsEngineParameters()["fixedTimeStep"]
+		self.stepsPerAction = 10
+		self.timeDelta = self.stepsPerAction * self._p.getPhysicsEngineParameters()["fixedTimeStep"]
 		self.alpha = 0.05
+		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.VELOCITY_CONTROL, forces=np.zeros(30))
+		self.gains = np.array([gains[str(p.getJointInfo(self.atlas, i)[1])[2:-1]] for i in range(30)])
+		print(self._p.getPhysicsEngineParameters())
+		self._p.setTimeStep(0.001)
 
 	def seed(self, seed=None):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -64,15 +70,15 @@ class AtlasBulletEnv(gym.Env):
 		self._p.disconnect()
 
 	def step(self, action):
-		self._p.stepSimulation()
-		for (i, targetAngle) in enumerate(action):
-			(currentAngle, currentVel, _, _) = self._p.getJointState(self.atlas, i)
-			# newVel = currentVel + self.timeDelta * (targetAngle - currentAngle) * 0.5
-			# newAngle = currentAngle + self.timeDelta * newVel
-			# targetAngle /= (self.alpha) # Pink noise 1/f gain compensation
-			filteredAngle = (self.alpha * targetAngle + (1 - self.alpha) * currentAngle)
-			# newPos = self.timeDelta * np.clip(filteredAngle - currentAngle, -0.7, 0.7) + currentAngle # limit speed
-			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, filteredAngle) #, positionGain=0, velocityGain=0)
+		for _ in range(self.stepsPerAction):
+			readings = self._p.getJointStates(self.atlas, np.arange(30))
+			currentAngle = np.array([r[0] for r in readings])
+			currentVel = np.array([r[1] for r in readings])
+			forces = self.gains * (action - currentAngle) - 0.3 * currentVel
+			forces *= 2
+			print(forces)
+			self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=forces) #, positionGain=0, velocityGain=0)
+			self._p.stepSimulation()
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
 		obs = np.concatenate((pos, orn))
 		reward = pos[1]

@@ -58,3 +58,10 @@ python3 -m atlasrl.robots.AtlasRemoteEnv_test
 ## Data format
 
 - 1st is dT in secs
+
+## Running with ISAAC
+
+```console
+
+source ~/.local/share/ov/pkg/isaac_sim-2021.1.1/python_samples/setenv.sh
+```
