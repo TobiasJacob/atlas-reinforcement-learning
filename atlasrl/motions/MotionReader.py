@@ -42,6 +42,7 @@ class MotionReader:
 
     def getState(self, time: float) -> MotionState:
         if self.loop == "wrap":
+            loops = time // self.frames[-1].absoluteTime
             time = time % self.frames[-1].absoluteTime
         assert time >= self.frames[0].absoluteTime and time <= self.frames[-1].absoluteTime
         for (i, row) in enumerate(self.frames):
@@ -50,4 +51,6 @@ class MotionReader:
         row1 = self.frames[i - 1]
         row2 = self.frames[i]
         alpha = (time - row1.absoluteTime) / (row2.absoluteTime - row1.absoluteTime)
-        return MotionState.fromInterpolation(row1, row2, alpha)
+        result = MotionState.fromInterpolation(row1, row2, alpha)
+        result.rootPosition += loops * (self.frames[-1].rootPosition - self.frames[0].rootPosition)
+        return result

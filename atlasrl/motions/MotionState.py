@@ -1,3 +1,4 @@
+from atlasrl.motions.QuaternionToAtlasEuler import convertQuaternionToAtlasEuler
 from atlasrl.robots.Constants import convertAngleToActionSpace
 from dataclasses import dataclass
 import dataclasses
@@ -106,9 +107,10 @@ class MotionState:
         action[parameterIndex["back_bky"]] = convertAngleToActionSpace("back_bky", -(quaternion.as_rotation_vector(self.chestRotation) * np.array([0, 0, 1])).sum())
         action[parameterIndex["back_bkz"]] = convertAngleToActionSpace("back_bkz", (quaternion.as_rotation_vector(self.chestRotation) * np.array([0, 1, 0])).sum())
 
-        action[parameterIndex["l_leg_hpx"]] = convertAngleToActionSpace("l_leg_hpx", (quaternion.as_rotation_vector(self.leftHipRotation) * np.array([1, 0, 0])).sum())
-        action[parameterIndex["l_leg_hpy"]] = convertAngleToActionSpace("l_leg_hpy", -(quaternion.as_rotation_vector(self.leftHipRotation) * np.array([0, 0, 1])).sum())
-        action[parameterIndex["l_leg_hpz"]] = convertAngleToActionSpace("l_leg_hpz", (quaternion.as_rotation_vector(self.leftHipRotation) * np.array([0, 1, 0])).sum())
+        leftHipEuler = convertQuaternionToAtlasEuler(self.leftHipRotation)
+        action[parameterIndex["l_leg_hpx"]] = convertAngleToActionSpace("l_leg_hpx", leftHipEuler[0])
+        action[parameterIndex["l_leg_hpy"]] = convertAngleToActionSpace("l_leg_hpy", leftHipEuler[1])
+        action[parameterIndex["l_leg_hpz"]] = convertAngleToActionSpace("l_leg_hpz", leftHipEuler[2])
         action[parameterIndex["r_leg_hpx"]] = convertAngleToActionSpace("r_leg_hpx", (quaternion.as_rotation_vector(self.rightHipRotation) * np.array([1, 0, 0])).sum())
         action[parameterIndex["r_leg_hpy"]] = convertAngleToActionSpace("r_leg_hpy", -(quaternion.as_rotation_vector(self.rightHipRotation) * np.array([0, 0, 1])).sum())
         action[parameterIndex["r_leg_hpz"]] = convertAngleToActionSpace("r_leg_hpz", (quaternion.as_rotation_vector(self.rightHipRotation) * np.array([0, 1, 0])).sum())

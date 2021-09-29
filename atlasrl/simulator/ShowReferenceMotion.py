@@ -21,17 +21,6 @@ while time < 100:
     targetOrnAsArray = quaternion.as_float_array(targetOrn)
     env._p.resetBasePositionAndOrientation(env.atlas, targetPos + np.array([0, 0, 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
 
-    # force = np.array([time, 0, 1]) - pos
-    # force += (force - lastPosErr) * 2
-    # force *= 100
-    # # p.applyExternalForce(objectUniqueId=env.atlas, linkIndex=-1, forceObj=force, posObj=targetPos, flags=p.WORLD_FRAME)
-    # lastPosErr = (targetPos + np.array([0, 0, 1]) - pos)
-    # torque = quaternion.as_rotation_vector(targetOrn.inverse()) - quaternion.as_rotation_vector(quaternion.from_float_array(orn[3:4] + orn[:3]))
-    # torque += (torque - lastTorqueErr) * 1.0
-    # torque *= 10000
-    # p.applyExternalTorque(objectUniqueId=env.atlas, linkIndex=-1, torqueObj=torque, flags=p.WORLD_FRAME)
-    # lastTorqueErr = quaternion.as_rotation_vector(targetOrn) - quaternion.as_rotation_vector(quaternion.from_float_array(orn[3:4] + orn[:3]))
-
     env.render("human")
     time += env.timeDelta
     sleep(env.timeDelta)
