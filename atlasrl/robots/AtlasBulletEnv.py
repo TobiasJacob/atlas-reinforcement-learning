@@ -1,3 +1,5 @@
+import quaternion
+from atlasrl.motions.MotionReader import MotionReader
 import os
 import gym, gym.spaces, gym.utils, gym.utils.seeding
 import numpy as np
@@ -15,6 +17,7 @@ class AtlasBulletEnv(gym.Env):
 	}
 
 	def __init__(self, render=False):
+		self.motionReader = MotionReader.readClip()
 		self.isRender = render
 		if self.isRender:
 			self._p = BulletClient(connection_mode=p.GUI)
@@ -26,9 +29,9 @@ class AtlasBulletEnv(gym.Env):
 		for i in range (self._p.getNumJoints(self.atlas)):
 			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, 0)
 		self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
-		# self._p.setGravity(0,0,-9.81)
+		self._p.setGravity(0,0,-9.81)
 		self.action_space = gym.spaces.Box(low=-1, high=1, shape=(30,))
-		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(7,))
+		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(8 + 2 * 30,))
 		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=45, cameraPitch=-30, cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
 		self._p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
 		self._p.configureDebugVisualizer(p.COV_ENABLE_KEYBOARD_SHORTCUTS, 1)
@@ -40,9 +43,11 @@ class AtlasBulletEnv(gym.Env):
 			self._p.saveBullet("data/initialState.bullet")
 		self.initialState = self._p.saveState()
 		self.timeDelta = self._p.getPhysicsEngineParameters()["fixedTimeStep"]
-		self.alpha = 0.05
 		self.cameraStates = [[45, -30], [0, -15], [90, -15]]
 		self.activeI = 0
+		self.time = 0
+		self.lastDesiredAction = np.zeros(30)
+		self.lastChosenAction = np.zeros(30)
 
 	def seed(self, seed=None):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -51,12 +56,11 @@ class AtlasBulletEnv(gym.Env):
 	def reset(self):
 		self._p.restoreState(self.initialState)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
-		obs = np.concatenate((pos, orn))
+		self.time = 0
+		obs = np.concatenate((pos, orn, [self.time], self.lastDesiredAction, self.lastChosenAction))
 		return obs
 
 	def render(self, mode = "human", close=False):
-		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=self.cameraStates[self.activeI][0], cameraPitch=self.cameraStates[self.activeI][1], cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
-		
 		keys = p.getKeyboardEvents()
 		if keys.get(100) == 3:  #D
 			self.activeI = (self.activeI + 1) % len(self.cameraStates)
@@ -75,15 +79,27 @@ class AtlasBulletEnv(gym.Env):
 
 	def step(self, action):
 		self._p.stepSimulation()
-		for (i, targetAngle) in enumerate(action):
-			(currentAngle, currentVel, _, _) = self._p.getJointState(self.atlas, i)
-			# newVel = currentVel + self.timeDelta * (targetAngle - currentAngle) * 0.5
-			# newAngle = currentAngle + self.timeDelta * newVel
-			# targetAngle /= (self.alpha) # Pink noise 1/f gain compensation
-			filteredAngle = (self.alpha * targetAngle + (1 - self.alpha) * currentAngle)
-			# newPos = self.timeDelta * np.clip(filteredAngle - currentAngle, -0.7, 0.7) + currentAngle # limit speed
-			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, targetAngle) #, positionGain=0, velocityGain=0)
+		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, action, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
-		obs = np.concatenate((pos, orn))
-		reward = pos[1]
-		return obs, reward, False, {}
+		desiredState = self.motionReader.getState(self.time)
+
+		# Action and action speed difference
+		desiredAction = desiredState.getAction()
+		desiredDifference = desiredAction - self.lastDesiredAction
+		chosenDifference = action - self.lastChosenAction
+		reward = np.exp(-2 * np.square(desiredAction - action).mean())
+		reward += np.exp(-0.1 * np.square(desiredDifference - chosenDifference).mean())
+		self.lastDesiredAction = desiredAction
+		self.lastChosenAction = action
+
+		eulerDif = np.square(quaternion.as_euler_angles(desiredState.rootRotation.inverse() * quaternion.from_float_array((orn[3], *orn[:3])))).mean()
+		reward += np.exp(-40 * eulerDif)
+		reward += np.exp(-40 * np.square(desiredState.rootPosition - pos).mean())
+		self.time += self.timeDelta
+		done = self.time > 10
+		if eulerDif > 1:
+			done = True
+			reward -= 1
+		obs = np.concatenate((pos, orn, [self.time], desiredAction, action))
+		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=self.cameraStates[self.activeI][0], cameraPitch=self.cameraStates[self.activeI][1], cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
+		return obs, reward, done, {}
