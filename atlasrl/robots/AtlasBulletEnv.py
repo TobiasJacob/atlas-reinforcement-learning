@@ -78,13 +78,15 @@ class AtlasBulletEnv(gym.Env):
 		self._p.disconnect()
 
 	def step(self, action):
+		desiredState = self.motionReader.getState(self.time)
+		desiredAction = desiredState.getAction()
+		# action = desiredAction + action / 10.
+
 		self._p.stepSimulation()
 		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, action, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
-		desiredState = self.motionReader.getState(self.time)
 
 		# Action and action speed difference
-		desiredAction = desiredState.getAction()
 		desiredDifference = desiredAction - self.lastDesiredAction
 		chosenDifference = action - self.lastChosenAction
 		reward = np.exp(-2 * np.square(desiredAction - action).mean())
@@ -92,12 +94,12 @@ class AtlasBulletEnv(gym.Env):
 		self.lastDesiredAction = desiredAction
 		self.lastChosenAction = action
 
-		eulerDif = np.square(quaternion.as_euler_angles(desiredState.rootRotation.inverse() * quaternion.from_float_array((orn[3], *orn[:3])))).mean()
+		eulerDif = 2 * np.arccos(quaternion.as_float_array(desiredState.rootRotation.conjugate() * quaternion.from_float_array((orn[3], *orn[:3])))[0])
 		reward += np.exp(-40 * eulerDif)
 		reward += np.exp(-40 * np.square(desiredState.rootPosition - pos).mean())
 		self.time += self.timeDelta
 		done = self.time > 10
-		if eulerDif > 1:
+		if eulerDif > 45 / 180 * np.pi:
 			done = True
 			reward -= 1
 		obs = np.concatenate((pos, orn, [self.time], desiredAction, action))
