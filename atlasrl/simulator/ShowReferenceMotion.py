@@ -18,6 +18,7 @@ while time < 100:
 
     pos, orn = env._p.getBasePositionAndOrientation(env.atlas)
     targetPos, targetOrn = motionState.rootPosition, motionState.rootRotation
+    targetOrn = targetOrn * motionState.chestRotation.inverse()
     targetOrnAsArray = quaternion.as_float_array(targetOrn)
     env._p.resetBasePositionAndOrientation(env.atlas, targetPos + np.array([0, 0, 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
 
