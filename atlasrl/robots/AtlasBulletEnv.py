@@ -8,6 +8,7 @@ from pybullet_utils.bullet_client import BulletClient
 import pybullet_data
 
 from pkg_resources import parse_version
+from time import sleep
 
 
 class AtlasBulletEnv(gym.Env):
@@ -16,38 +17,39 @@ class AtlasBulletEnv(gym.Env):
 		'video.frames_per_second': 60
 	}
 
-	def __init__(self, render=False):
+	def __init__(self, render=False, controlFreq=30., simStepsPerControlStep=1):
+		super().__init__()
 		self.motionReader = MotionReader.readClip()
 		self.isRender = render
+		self.simStepsPerControlStep = simStepsPerControlStep
 		if self.isRender:
 			self._p = BulletClient(connection_mode=p.GUI)
 		else:
 			self._p = BulletClient()
 		self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
 		self._p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
-		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [-2, 3, 2.5])
+		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [0, 0, 2.5])
 		for i in range (self._p.getNumJoints(self.atlas)):
 			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, 0)
 		self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
+		self._p.setTimeStep(1/(controlFreq * simStepsPerControlStep))
 		self._p.setGravity(0,0,-9.81)
 		self.action_space = gym.spaces.Box(low=-1, high=1, shape=(30,))
-		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(8 + 2 * 30,))
+		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(13 + 2 * 30,))
 		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=45, cameraPitch=-30, cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
 		self._p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
 		self._p.configureDebugVisualizer(p.COV_ENABLE_KEYBOARD_SHORTCUTS, 1)
-		if os.path.exists("data/initialState.bullet"):
-			self.initialState = self._p.restoreState(fileName="data/initialState.bullet")
-		else:
-			for _ in range(300):
-				self._p.stepSimulation()
-			self._p.saveBullet("data/initialState.bullet")
 		self.initialState = self._p.saveState()
-		self.timeDelta = self._p.getPhysicsEngineParameters()["fixedTimeStep"]
+		self.timeDelta = self._p.getPhysicsEngineParameters()["fixedTimeStep"] * self.simStepsPerControlStep
 		self.cameraStates = [[45, -30], [0, -15], [90, -15]]
 		self.activeI = 0
 		self.time = 0
-		self.lastDesiredAction = np.zeros(30)
-		self.lastChosenAction = np.zeros(30)
+
+	def getObservation(self):
+		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
+		posSpeed, ornSpeed = self._p.getBaseVelocity(self.atlas)
+		obs = np.concatenate((pos, p.getEulerFromQuaternion(orn), posSpeed, ornSpeed, [self.time], self.lastDesiredAction, self.lastChosenAction))
+		return obs
 
 	def seed(self, seed=None):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -57,8 +59,9 @@ class AtlasBulletEnv(gym.Env):
 		self._p.restoreState(self.initialState)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
 		self.time = 0
-		obs = np.concatenate((pos, orn, [self.time], self.lastDesiredAction, self.lastChosenAction))
-		return obs
+		self.lastDesiredAction = np.zeros(30)
+		self.lastChosenAction = np.zeros(30)
+		return self.getObservation()
 
 	def render(self, mode = "human", close=False):
 		keys = p.getKeyboardEvents()
@@ -82,10 +85,11 @@ class AtlasBulletEnv(gym.Env):
 		desiredAction = desiredState.getAction()
 		# action = desiredAction + action / 10.
 
-		self._p.stepSimulation()
-		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, action, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
+		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, action)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
-
+		for _ in range(self.simStepsPerControlStep):
+			self._p.stepSimulation()
+			# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])
 		# Action and action speed difference
 		desiredDifference = desiredAction - self.lastDesiredAction
 		chosenDifference = action - self.lastChosenAction
@@ -95,13 +99,13 @@ class AtlasBulletEnv(gym.Env):
 		self.lastChosenAction = action
 
 		eulerDif = 2 * np.arccos(quaternion.as_float_array(desiredState.rootRotation.conjugate() * quaternion.from_float_array((orn[3], *orn[:3])))[0])
-		reward += np.exp(-40 * eulerDif)
-		reward += np.exp(-40 * np.square(desiredState.rootPosition - pos).mean())
+		reward += np.exp(-60 * eulerDif)
+		reward += np.exp(-60 * np.square(desiredState.rootPosition - pos).mean())
+		reward = 0.3
 		self.time += self.timeDelta
 		done = self.time > 10
-		if eulerDif > 45 / 180 * np.pi:
+		if eulerDif > 60 / 180 * np.pi:
 			done = True
 			reward -= 1
-		obs = np.concatenate((pos, orn, [self.time], desiredAction, action))
 		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=self.cameraStates[self.activeI][0], cameraPitch=self.cameraStates[self.activeI][1], cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
-		return obs, reward, done, {}
+		return self.getObservation(), reward, done, {}

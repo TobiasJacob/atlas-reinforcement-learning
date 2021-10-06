@@ -73,9 +73,9 @@ def convertAngleToActionSpace(jointName: str, angle: float):
     angle = (angle + np.pi) % (2 * np.pi) - np.pi
 
     if angle >= 0:
-        action = angle / limits[1]
+        action = angle / (limits[1] + 1e-7)
     else:
-        action = -angle / limits[0]
+        action = -angle / (limits[0] + 1e-7)
 
     return np.clip(action, -1, 1)
 
