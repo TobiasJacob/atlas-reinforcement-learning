@@ -102,7 +102,7 @@ class AtlasBulletEnv(gym.Env):
 		desiredDifference = desiredAction - self.lastDesiredAction
 		chosenDifference = action - self.lastChosenAction
 		actionDiff = np.square(desiredAction - action).mean()
-		rewardAction = np.exp(-5 * actionDiff) # Too loose
+		rewardAction = np.exp(-10 * actionDiff) # Too loose
 		actionSpeedDiff = np.square(desiredDifference - chosenDifference).mean()
 		rewardActionSpeed = np.exp(-5 * actionSpeedDiff)
 		self.lastDesiredAction = desiredAction
@@ -111,7 +111,7 @@ class AtlasBulletEnv(gym.Env):
 		eulerDif = 2 * np.arccos(quaternion.as_float_array(desiredState.rootRotation.conjugate() * quaternion.from_float_array((orn[3], *orn[:3])))[0])
 		rewardGlobalRotDiff = np.exp(-10 * eulerDif)
 		posDif = np.square(desiredState.rootPosition - pos).mean()
-		rewardRootPosDiff = np.exp(-10 * posDif)  # To strict
+		rewardRootPosDiff = np.exp(-2 * posDif)  # To strict
 		self.time += self.timeDelta
 		done = self.time > 10
 

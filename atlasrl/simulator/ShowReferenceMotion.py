@@ -7,6 +7,7 @@ from atlasrl.robots.AtlasBulletEnv import AtlasBulletEnv
 import pybullet as p
 
 env = AtlasBulletEnv(render=True)
+env.reset()
 clip = MotionReader.readClip()
 time = 0
 lastPosErr = np.zeros(3)

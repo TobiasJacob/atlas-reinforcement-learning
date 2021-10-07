@@ -19,11 +19,16 @@ def getBullentEnv(index: int):
 
 if __name__ == "__main__":
     # env = AtlasBulletEnv(render=True)
-    if False: # Set True for training
+    if True: # Set True for training
         log_dir = f"runs/{datetime.datetime.now()}"
         os.makedirs(log_dir, exist_ok=True)
         env = SubprocVecEnv([getBullentEnv(i) for i in range(16)]) 
         env = VecCheckNan(env, raise_exception=True)
+        if False: # Use a pre-trained model
+            model = PPO.load("runs/2021-10-07 14:05:18.985043/ModelTrained3M.torch")
+            model.env = env
+            model.learn(total_timesteps=1000000)
+            model.save(f"{log_dir}/ModelTrained1M.torch")
         for i in range(0, 100):
             # TODO: Run with use_sde=False, policy_kwargs={"log_std_init": -2.5}, 
             if i == 0:
@@ -35,7 +40,7 @@ if __name__ == "__main__":
             model.learn(total_timesteps=1000000)
             model.save(f"{log_dir}/ModelTrained{i + 1}M.torch")
 
-    model = PPO.load(f"ModelTrained7M.torch")
+    model = PPO.load(f"runs/2021-10-07 14:42:21.990140/ModelTrained1M.torch")
     env = getBullentEnv(0)()
 
     obs = env.reset()
