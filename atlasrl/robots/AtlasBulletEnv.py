@@ -12,6 +12,7 @@ from time import sleep
 import datetime
 
 from torch.utils.tensorboard import SummaryWriter
+from .Constants import parameterNames
 
 class AtlasBulletEnv(gym.Env):
 	metadata = {
@@ -49,6 +50,8 @@ class AtlasBulletEnv(gym.Env):
 		self.cameraStates = [[45, -30], [0, -15], [90, -15]]
 		self.activeI = 0
 		self.time = 0
+		footJoints = ["l_leg_akx", "l_leg_aky", "l_leg_kny", "r_leg_akx", "r_leg_aky", "r_leg_kny"]
+		self.footLinks = [parameterNames.index(j) for j in footJoints]
 
 	def getObservation(self):
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
@@ -110,10 +113,18 @@ class AtlasBulletEnv(gym.Env):
 		done = self.time > 10
 		rewardDead = 0
 
-		if eulerDif > 60 / 180 * np.pi:
-			done = True
+		robot_ground_contacts = self._p.getContactPoints(bodyA=self.atlas, bodyB=self.plane)
+
+		for contact in robot_ground_contacts:
+			if contact[3] not in self.footLinks:
+				done = True
+				break
+
 			# rewardDead -= 1
 		reward = rewardAction + rewardActionSpeed + rewardGlobalRotDiff + rewardRootPosDiff + rewardDead
+		if np.isnan(reward):
+			reward = 0
+		reward = np.clip(reward, 0, 2) # Clip reward for unexpected nans
 		if self.isRender:
 			self.logger.add_scalar("rollout/rewardAction", rewardAction, self.globalStep)
 			self.logger.add_scalar("rollout/rewardActionSpeed", rewardActionSpeed, self.globalStep)
