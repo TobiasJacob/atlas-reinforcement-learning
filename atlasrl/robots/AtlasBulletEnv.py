@@ -34,7 +34,7 @@ class AtlasBulletEnv(gym.Env):
 			self._p = BulletClient()
 		self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
 		self._p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
-		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [0, 0, 2.5])
+		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [0, 0, 1.0])
 		for i in range (self._p.getNumJoints(self.atlas)):
 			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, 0)
 		self.plane = self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
@@ -65,7 +65,6 @@ class AtlasBulletEnv(gym.Env):
 
 	def reset(self):
 		self._p.restoreState(self.initialState)
-		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
 		self.time = 0
 		self.lastDesiredAction = np.zeros(30)
 		self.lastChosenAction = np.zeros(30)
@@ -91,7 +90,8 @@ class AtlasBulletEnv(gym.Env):
 	def step(self, action):
 		desiredState = self.motionReader.getState(self.time)
 		desiredAction = desiredState.getAction()
-		# action = desiredAction + action / 10.
+		action = desiredAction + action / 5.
+		# action = action / 5.
 
 		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, action)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
@@ -101,17 +101,19 @@ class AtlasBulletEnv(gym.Env):
 		# Action and action speed difference
 		desiredDifference = desiredAction - self.lastDesiredAction
 		chosenDifference = action - self.lastChosenAction
-		rewardAction = np.exp(-5 * np.square(desiredAction - action).mean())
-		rewardActionSpeed = np.exp(-5 * np.square(desiredDifference - chosenDifference).mean())
+		actionDiff = np.square(desiredAction - action).mean()
+		rewardAction = np.exp(-5 * actionDiff) # Too loose
+		actionSpeedDiff = np.square(desiredDifference - chosenDifference).mean()
+		rewardActionSpeed = np.exp(-5 * actionSpeedDiff)
 		self.lastDesiredAction = desiredAction
 		self.lastChosenAction = action
 
 		eulerDif = 2 * np.arccos(quaternion.as_float_array(desiredState.rootRotation.conjugate() * quaternion.from_float_array((orn[3], *orn[:3])))[0])
 		rewardGlobalRotDiff = np.exp(-10 * eulerDif)
-		rewardRootPosDiff = np.exp(-2 * np.square(desiredState.rootPosition - pos).mean())
+		posDif = np.square(desiredState.rootPosition - pos).mean()
+		rewardRootPosDiff = np.exp(-10 * posDif)  # To strict
 		self.time += self.timeDelta
 		done = self.time > 10
-		rewardDead = 0
 
 		robot_ground_contacts = self._p.getContactPoints(bodyA=self.atlas, bodyB=self.plane)
 
@@ -121,7 +123,7 @@ class AtlasBulletEnv(gym.Env):
 				break
 
 			# rewardDead -= 1
-		reward = rewardAction + rewardActionSpeed + rewardGlobalRotDiff + rewardRootPosDiff + rewardDead
+		reward = 0.3 * rewardAction + 0.1 * rewardActionSpeed + 0.65 * rewardGlobalRotDiff + 0.1 * rewardRootPosDiff
 		if np.isnan(reward):
 			reward = 0
 		reward = np.clip(reward, 0, 2) # Clip reward for unexpected nans
@@ -130,9 +132,11 @@ class AtlasBulletEnv(gym.Env):
 			self.logger.add_scalar("rollout/rewardActionSpeed", rewardActionSpeed, self.globalStep)
 			self.logger.add_scalar("rollout/rewardGlobalRotDiff", rewardGlobalRotDiff, self.globalStep)
 			self.logger.add_scalar("rollout/rewardRootPosDiff", rewardRootPosDiff, self.globalStep)
-			self.logger.add_scalar("rollout/rewardDead", rewardDead, self.globalStep)
 			self.logger.add_scalar("rollout/reward", reward, self.globalStep)
 			self.logger.add_scalar("rollout/eulerDif", eulerDif, self.globalStep)
+			self.logger.add_scalar("rollout/posDif", posDif, self.globalStep)
+			self.logger.add_scalar("rollout/actionDiff", actionDiff, self.globalStep)
+			self.logger.add_scalar("rollout/actionSpeedDiff", actionSpeedDiff, self.globalStep)
 			if done:
 				self.logger.add_scalar("rollout/episodeLen", self.time, self.globalStep)
 			self.globalStep += 1

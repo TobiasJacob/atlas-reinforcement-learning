@@ -18,24 +18,24 @@ def getBullentEnv(index: int):
     return lambda: AtlasBulletEnv(render=index == 0)
 
 if __name__ == "__main__":
-    log_dir = f"runs/{datetime.datetime.now()}"
-    os.makedirs(log_dir, exist_ok=True)
-    env = SubprocVecEnv([getBullentEnv(i) for i in range(16)]) 
-    env = VecCheckNan(env, raise_exception=True)
     # env = AtlasBulletEnv(render=True)
+    if False: # Set True for training
+        log_dir = f"runs/{datetime.datetime.now()}"
+        os.makedirs(log_dir, exist_ok=True)
+        env = SubprocVecEnv([getBullentEnv(i) for i in range(16)]) 
+        env = VecCheckNan(env, raise_exception=True)
+        for i in range(0, 100):
+            # TODO: Run with use_sde=False, policy_kwargs={"log_std_init": -2.5}, 
+            if i == 0:
+                model = PPO("MlpPolicy", env, learning_rate=1e-3, n_epochs=4, n_steps=1024, verbose=1, tensorboard_log=log_dir)
+            else:
+                model = PPO.load(f"{log_dir}/ModelTrained{i}M.torch", tensorboard_log=log_dir)
+                model.env = env
+            # model.policy.log_std.requires_grad = False # Prevent training of std
+            model.learn(total_timesteps=1000000)
+            model.save(f"{log_dir}/ModelTrained{i + 1}M.torch")
 
-    for i in range(5, 100):
-        # TODO: Run with use_sde=False, policy_kwargs={"log_std_init": -2.5}, 
-        if False:
-            model = PPO("MlpPolicy", env, learning_rate=1e-3, n_epochs=4, n_steps=256, verbose=1, tensorboard_log=log_dir)
-        else:
-            model = PPO.load(f"ModelTrained{i}M.torch", tensorboard_log=log_dir)
-            model.env = env
-        # model.policy.log_std.requires_grad = False # Prevent training of std
-        model.learn(total_timesteps=1000000)
-        model.save(f"ModelTrained{i + 1}M.torch")
-
-    model = PPO.load(f"ModelTrained.torch")
+    model = PPO.load(f"ModelTrained7M.torch")
     env = getBullentEnv(0)()
 
     obs = env.reset()
