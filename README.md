@@ -8,12 +8,11 @@ This project aims to run reinforcement learning models on a real Atlas.
 
 - [x] Run the simulated Atlas model in `PyBullet`.
 - [x] Wrap it into an OpenAI-Gym environment.
-- [ ] Low pass filter on the actual angles instead of the normalized action space
-- [ ] Run low pass filter with 100hz and action sampling with 30hz
-- [ ] Retarget motion files to AtlasEnv and see how it looks
-- [ ] Add low pass filtering to joint motors
-- [ ] Create a second backend for the OpenAI-Gym that connects to the real Atlas.
-- [ ] Train a very basic machine learning model with `stable_baselines` in the virtual Gym and run it in the real Gym. Fix most of the joints to zero, except, for example, the right arm.
+- [x] Run low pass filter or simulation with 100hz and action sampling with 30hz
+- [x] Retarget motion files to AtlasEnv and see how it looks
+- [x] Create a second backend for the OpenAI-Gym that connects to the real Atlas.
+- [x] Train a very basic machine learning model with `stable_baselines` in the virtual Gym and run it in the real Gym. Fix most of the joints to zero, except, for example, the right arm.
+- [ ] Add low pass filtering to joint motors. Low pass filter on the actual angles instead of the normalized action space
 - [ ] See how the model behaves and decide on further steps.
 
 ## Setup
