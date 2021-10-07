@@ -9,7 +9,9 @@ import pybullet_data
 
 from pkg_resources import parse_version
 from time import sleep
+import datetime
 
+from torch.utils.tensorboard import SummaryWriter
 
 class AtlasBulletEnv(gym.Env):
 	metadata = {
@@ -19,6 +21,9 @@ class AtlasBulletEnv(gym.Env):
 
 	def __init__(self, render=False, controlFreq=30., simStepsPerControlStep=1):
 		super().__init__()
+		if render:
+			self.logger = SummaryWriter(f"runs/{datetime.datetime.now()}")
+			self.globalStep = 0
 		self.motionReader = MotionReader.readClip()
 		self.isRender = render
 		self.simStepsPerControlStep = simStepsPerControlStep
@@ -31,7 +36,7 @@ class AtlasBulletEnv(gym.Env):
 		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [0, 0, 2.5])
 		for i in range (self._p.getNumJoints(self.atlas)):
 			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, 0)
-		self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
+		self.plane = self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
 		self._p.setTimeStep(1/(controlFreq * simStepsPerControlStep))
 		self._p.setGravity(0,0,-9.81)
 		self.action_space = gym.spaces.Box(low=-1, high=1, shape=(30,))
@@ -93,19 +98,32 @@ class AtlasBulletEnv(gym.Env):
 		# Action and action speed difference
 		desiredDifference = desiredAction - self.lastDesiredAction
 		chosenDifference = action - self.lastChosenAction
-		reward = np.exp(-2 * np.square(desiredAction - action).mean())
-		reward += np.exp(-0.1 * np.square(desiredDifference - chosenDifference).mean())
+		rewardAction = np.exp(-5 * np.square(desiredAction - action).mean())
+		rewardActionSpeed = np.exp(-5 * np.square(desiredDifference - chosenDifference).mean())
 		self.lastDesiredAction = desiredAction
 		self.lastChosenAction = action
 
 		eulerDif = 2 * np.arccos(quaternion.as_float_array(desiredState.rootRotation.conjugate() * quaternion.from_float_array((orn[3], *orn[:3])))[0])
-		reward += np.exp(-60 * eulerDif)
-		reward += np.exp(-60 * np.square(desiredState.rootPosition - pos).mean())
-		reward = 0.3
+		rewardGlobalRotDiff = np.exp(-10 * eulerDif)
+		rewardRootPosDiff = np.exp(-2 * np.square(desiredState.rootPosition - pos).mean())
 		self.time += self.timeDelta
 		done = self.time > 10
+		rewardDead = 0
+
 		if eulerDif > 60 / 180 * np.pi:
 			done = True
-			reward -= 1
+			# rewardDead -= 1
+		reward = rewardAction + rewardActionSpeed + rewardGlobalRotDiff + rewardRootPosDiff + rewardDead
+		if self.isRender:
+			self.logger.add_scalar("rollout/rewardAction", rewardAction, self.globalStep)
+			self.logger.add_scalar("rollout/rewardActionSpeed", rewardActionSpeed, self.globalStep)
+			self.logger.add_scalar("rollout/rewardGlobalRotDiff", rewardGlobalRotDiff, self.globalStep)
+			self.logger.add_scalar("rollout/rewardRootPosDiff", rewardRootPosDiff, self.globalStep)
+			self.logger.add_scalar("rollout/rewardDead", rewardDead, self.globalStep)
+			self.logger.add_scalar("rollout/reward", reward, self.globalStep)
+			self.logger.add_scalar("rollout/eulerDif", eulerDif, self.globalStep)
+			if done:
+				self.logger.add_scalar("rollout/episodeLen", self.time, self.globalStep)
+			self.globalStep += 1
 		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=self.cameraStates[self.activeI][0], cameraPitch=self.cameraStates[self.activeI][1], cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
 		return self.getObservation(), reward, done, {}
