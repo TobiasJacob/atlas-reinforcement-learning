@@ -130,14 +130,14 @@ class AtlasBulletEnv(gym.Env):
 		jointDiff = np.square(desiredAngles - jointAngles).mean()
 		rewardJoint = np.exp(-10 * jointDiff)
 		jointSpeedDiff = np.square(jointSpeeds - desiredJointSpeeds).mean()
-		rewardJointSpeed = np.exp(-5 * jointSpeedDiff)
+		rewardJointSpeed = np.exp(-1.5 * jointSpeedDiff)
 		rotationDif = 2 * np.arccos(quaternion.as_float_array(desiredState.rootRotation.inverse() * quaternion.from_float_array((orn[3], *orn[:3])))[0] - 1e-5)
 		rewardGlobalRotDiff = np.exp(-10 * rotationDif)
 		posDif = np.square(desiredState.rootPosition - pos).mean()
 		rewardRootPosDiff = np.exp(-2 * posDif)
 		done = self.time > 10
 
-		reward = 0.3 * rewardJoint + 0.1 * rewardJointSpeed + 0.65 * rewardGlobalRotDiff + 0.1 * rewardRootPosDiff
+		reward = 0.2 * rewardJoint + 0.1 * rewardJointSpeed + 0.4 * rewardGlobalRotDiff + 0.3 * rewardRootPosDiff
 		if np.isnan(reward):
 			reward = 0
 		
