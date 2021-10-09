@@ -41,7 +41,7 @@ class AtlasBulletEnv(gym.Env):
 		self._p.setTimeStep(1/(controlFreq * simStepsPerControlStep))
 		self._p.setGravity(0,0,-9.81)
 		self.action_space = gym.spaces.Box(low=-1, high=1, shape=(30,))
-		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(133,))
+		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(136,))
 		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=45, cameraPitch=-30, cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
 		self._p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
 		self._p.configureDebugVisualizer(p.COV_ENABLE_KEYBOARD_SHORTCUTS, 1)
@@ -69,10 +69,10 @@ class AtlasBulletEnv(gym.Env):
 		desiredAngles = desiredState.getAngles()
 		dT = 0.01
 		nextDesiredState = self.motionReader.getState(self.time + dT)
-		nextDesiredAngles = nextDesiredState.getAngles()
-		desiredJointSpeeds = (nextDesiredAngles - desiredAngles) / dT
-		obs = np.concatenate((pos[2:3], vecX, vecY, posSpeed, ornSpeed, jointAngles, jointSpeeds, desiredAngles, desiredJointSpeeds))
-		return obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds
+		desiredJointSpeeds = (nextDesiredState.getAngles() - desiredAngles) / dT
+		desiredBaseSpeed = (nextDesiredState.rootPosition - desiredState.rootPosition) / dT
+		obs = np.concatenate((pos[2:3], vecX, vecY, posSpeed, desiredBaseSpeed, ornSpeed, jointAngles, jointSpeeds, desiredAngles, desiredJointSpeeds))
+		return obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds, posSpeed, desiredBaseSpeed, pos, orn, desiredState
 
 	def seed(self, seed=None):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -116,7 +116,6 @@ class AtlasBulletEnv(gym.Env):
 
 		# Step simulation
 		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, action)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
-		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
 		for _ in range(self.simStepsPerControlStep):
 			self._p.stepSimulation()
 			# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])
@@ -124,24 +123,26 @@ class AtlasBulletEnv(gym.Env):
 		self.time += self.timeDelta
 
 		# Observe
-		obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds = self.getObservation()
+		obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds, posSpeed, desiredBaseSpeed, pos, orn, desiredState = self.getObservation()
 	
 		# Calculate Reward
 		jointDiff = np.square(desiredAngles - jointAngles).mean()
 		rewardJoint = np.exp(-10 * jointDiff)
 		jointSpeedDiff = np.square(jointSpeeds - desiredJointSpeeds).mean()
 		rewardJointSpeed = np.exp(-1.5 * jointSpeedDiff)
-		rotationDif = 2 * np.arccos(quaternion.as_float_array(desiredState.rootRotation.inverse() * quaternion.from_float_array((orn[3], *orn[:3])))[0] - 1e-5)
+		rotationDif = 2 * np.arccos(quaternion.as_float_array(desiredState.rootRotation.inverse() * orn)[0] - 1e-5)
 		rewardGlobalRotDiff = np.exp(-10 * rotationDif)
 		posDif = np.square(desiredState.rootPosition - pos).mean()
 		rewardRootPosDiff = np.exp(-2 * posDif)
-		done = self.time > 10
+		rootSpeedDif = np.square(posSpeed - desiredBaseSpeed).mean()
+		rewardRootSpeedDif = np.exp(-2 * rootSpeedDif)
 
-		reward = 0.2 * rewardJoint + 0.1 * rewardJointSpeed + 0.4 * rewardGlobalRotDiff + 0.3 * rewardRootPosDiff
+		reward = 0.2 * rewardJoint + 0.1 * rewardJointSpeed + 0.4 * rewardGlobalRotDiff + 0.15 * rewardRootPosDiff + 0.15 * rewardRootSpeedDif
 		if np.isnan(reward):
 			reward = 0
-		
+
 		# Check for termination because of ground contacts
+		done = False
 		robot_ground_contacts = self._p.getContactPoints(bodyA=self.atlas, bodyB=self.plane)
 		for contact in robot_ground_contacts:
 			if contact[3] not in self.footLinks:

@@ -32,7 +32,18 @@ if __name__ == "__main__":
         for i in range(0, 100):
             # TODO: Run with use_sde=False, policy_kwargs={"log_std_init": -2.5}, 
             if i == 0:
-                model = PPO("MlpPolicy", env, learning_rate=1e-3, n_epochs=4, n_steps=1024, verbose=1, tensorboard_log=log_dir)
+                model = PPO(
+                    "MlpPolicy",
+                    env,
+                    learning_rate=3e-4,
+                    n_epochs=8,
+                    n_steps=2048,
+                    batch_size=512,
+                    gae_lambda=0.95,
+                    gamma=0.95,
+                    verbose=1,
+                    tensorboard_log=log_dir
+                )
             else:
                 model = PPO.load(f"{log_dir}/ModelTrained{i}M.torch", tensorboard_log=log_dir)
                 model.env = env
@@ -40,7 +51,7 @@ if __name__ == "__main__":
             model.learn(total_timesteps=1000000)
             model.save(f"{log_dir}/ModelTrained{i + 1}M.torch")
 
-    model = PPO.load(f"runs/2021-10-07 14:42:21.990140/ModelTrained1M.torch")
+    model = PPO.load(f"runs/2021-10-09 01:47:53.680634/ModelTrained57M.torch")
     env = getBullentEnv(0)()
 
     obs = env.reset()
