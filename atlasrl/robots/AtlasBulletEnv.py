@@ -155,6 +155,7 @@ class AtlasBulletEnv(gym.Env):
 			self.logger.add_scalar("rollout/rewardJointSpeed", rewardJointSpeed, self.globalStep)
 			self.logger.add_scalar("rollout/rewardGlobalRotDiff", rewardGlobalRotDiff, self.globalStep)
 			self.logger.add_scalar("rollout/rewardRootPosDiff", rewardRootPosDiff, self.globalStep)
+			self.logger.add_scalar("rollout/rewardRootSpeedDif", rewardRootSpeedDif, self.globalStep)
 			self.logger.add_scalar("rollout/reward", reward, self.globalStep)
 			self.logger.add_scalar("rollout/eulerDif", rotationDif, self.globalStep)
 			self.logger.add_scalar("rollout/posDif", posDif, self.globalStep)
