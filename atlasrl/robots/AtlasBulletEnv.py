@@ -83,11 +83,12 @@ class AtlasBulletEnv(gym.Env):
 		# Setting atlas to random initial position with noise
 		self.time = np.random.rand() * self.motionReader.frames[-1].absoluteTime
 		motionState = self.motionReader.getState(self.time)
-		action = motionState.getAction() + np.random.normal(30) * 0.1
+		angles = motionState.getAngles() + np.random.normal(size=30) * 0.1
 		targetPos, targetOrn = motionState.rootPosition, motionState.rootRotation
 		targetOrnAsArray = quaternion.as_float_array(targetOrn)
 		self._p.resetBasePositionAndOrientation(self.atlas, targetPos + np.array([0, 0, 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
-		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, action)
+		for i in range(30):
+			self._p.resetJointState(self.atlas, i, angles[i])
 		return self.getObservation()[0]
 
 	def render(self, mode = "human", close=False):
