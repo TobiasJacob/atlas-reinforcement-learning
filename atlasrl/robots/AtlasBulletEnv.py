@@ -111,7 +111,7 @@ class AtlasBulletEnv(gym.Env):
 		# Get action in residual style
 		desiredState = self.motionReader.getState(self.time)
 		desiredAction = desiredState.getAction()
-		action = desiredAction + action / 5.
+		action = desiredAction + action
 		# action = action / 5.
 
 		# Step simulation
