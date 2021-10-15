@@ -112,7 +112,7 @@ class AtlasBulletEnv(gym.Env):
 		# Get action in residual style
 		desiredState = self.motionReader.getState(self.time)
 		desiredAction = desiredState.getAction()
-		action = desiredAction + action
+		# action = desiredAction + action
 		# action = action / 5.
 
 		# Step simulation
@@ -138,7 +138,7 @@ class AtlasBulletEnv(gym.Env):
 		rootSpeedDif = np.square(posSpeed - desiredBaseSpeed).mean()
 		rewardRootSpeedDif = np.exp(-2 * rootSpeedDif)
 
-		reward = 0.2 * rewardJoint + 0.1 * rewardJointSpeed + 0.4 * rewardGlobalRotDiff + 0.15 * rewardRootPosDiff + 0.15 * rewardRootSpeedDif
+		reward = 0.6 * rewardJoint + 0.1 * rewardJointSpeed + 0.1 * rewardGlobalRotDiff + 0.1 * rewardRootPosDiff + 0.1 * rewardRootSpeedDif
 		if np.isnan(reward):
 			reward = 0
 

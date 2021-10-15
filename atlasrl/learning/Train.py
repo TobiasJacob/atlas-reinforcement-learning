@@ -20,23 +20,25 @@ def getBullentEnv(index: int):
 if __name__ == "__main__":
     # env = AtlasBulletEnv(render=True)
     if True: # Set True for training
-        log_dir = f"runs/{datetime.datetime.now()}"
+        log_dir = f"runs/reward2-{datetime.datetime.now()}"
         os.makedirs(log_dir, exist_ok=True)
         env = SubprocVecEnv([getBullentEnv(i) for i in range(16)]) 
         env = VecCheckNan(env, raise_exception=True)
-        if False: # Use a pre-trained model
-            model = PPO.load("runs/2021-10-09 12:02:23.349342/ModelTrained100M.torch")
+        startI = 0
+        if False: # Use a pre-trained model, don't forget to set i=1:1000
+            model = PPO.load("runs/2021-10-13 13:26:43.882604/ModelTrained90M.torch")
             model.env = env
             model.learn(total_timesteps=1000000)
             model.save(f"{log_dir}/ModelTrained1M.torch")
-        for i in range(0, 100):
+            startI = 1
+        for i in range(startI, 1000):
             # TODO: Run with use_sde=False, policy_kwargs={"log_std_init": -2.5}, 
             if i == 0:
                 model = PPO(
                     "MlpPolicy",
                     env,
-                    learning_rate=3e-4,
-                    n_epochs=8,
+                    learning_rate=5e-5,
+                    n_epochs=4,
                     n_steps=2048,
                     batch_size=512,
                     gae_lambda=0.95,
@@ -50,7 +52,7 @@ if __name__ == "__main__":
             model.learn(total_timesteps=1000000, reset_num_timesteps=False)
             model.save(f"{log_dir}/ModelTrained{i + 1}M.torch")
 
-    model = PPO.load(f"runs/2021-10-09 12:02:23.349342/ModelTrained30M.torch")
+    # model = PPO.load(f"runs/reward2-2021-10-14 12:51:36.788854/ModelTrained125M.torch")
     env = getBullentEnv(0)()
 
     obs = env.reset()
