@@ -35,6 +35,44 @@ parameterNames = [
     'r_leg_akx'
 ]
 
+controllerGains = {
+    "l_leg_aky": 500.0,
+    "r_leg_aky": 500.0,
+    "l_leg_akx": 100.0,
+    "r_leg_akx": 100.0,
+    "l_leg_kny": 500.0,
+    "r_leg_kny": 500.0,
+    "l_leg_hpz": 100.0,
+    "r_leg_hpz": 100.0,
+    "l_leg_hpx": 300.0,
+    "r_leg_hpx": 300.0,
+    "l_leg_hpy": 300.0,
+    "r_leg_hpy": 300.0,
+    "back_bkz": 500.0,
+    "back_bky": 500.0,
+    "back_bkx": 500.0,
+    "r_arm_shz": 100.0,
+    "l_arm_shx": 100.0,
+    "r_arm_shx": 100.0,
+    "l_arm_ely": 100.0,
+    "r_arm_ely": 100.0,
+    "l_arm_elx": 100.0,
+    "r_arm_elx": 100.0,
+    "l_arm_wry": 10.0,
+    "r_arm_wry": 10.0,
+    "l_arm_wrx": 10.0,
+    "r_arm_wrx": 10.0,
+    "l_arm_wry2": 10.0,
+    "r_arm_wry2": 10.0,
+    "l_arm_shz": 10.0,
+    "neck_ry": 10.0,
+}
+
+
+gainArray = []
+for k in parameterNames:
+    gainArray.append(controllerGains[k])
+
 JOINT_LIMITS_PYBULLET = {
     "back_bkz": (-0.663225, 0.663225),
     "back_bky": (-0.219388, 0.538783),
@@ -86,3 +124,10 @@ def convertActionSpaceToAngle(jointName: str, action: float):
     else:
         angle = -action * limits[0]
     return np.clip(angle, limits[0], limits[1])
+
+def convertActionsToAngle(actions: np.ndarray):
+    angles = np.zeros(30)
+    for i, k in enumerate(parameterNames):
+        angles[i] = convertActionSpaceToAngle(k, actions[i])
+
+    return angles

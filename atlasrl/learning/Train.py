@@ -52,7 +52,7 @@ if __name__ == "__main__":
             model.learn(total_timesteps=1000000, reset_num_timesteps=False)
             model.save(f"{log_dir}/ModelTrained{i + 1}M.torch")
 
-    # model = PPO.load(f"runs/reward2-2021-10-14 12:51:36.788854/ModelTrained125M.torch")
+    # model = PPO.load(f"runs/reward2-2021-10-15 10:21:55.729128/ModelTrained130M.torch")
     env = getBullentEnv(0)()
 
     obs = env.reset()

@@ -12,7 +12,7 @@ from time import sleep
 import datetime
 
 from torch.utils.tensorboard import SummaryWriter
-from .Constants import parameterNames
+from .Constants import convertActionSpaceToAngle, convertActionsToAngle, parameterNames, gainArray
 
 class AtlasBulletEnv(gym.Env):
 	metadata = {
@@ -59,12 +59,7 @@ class AtlasBulletEnv(gym.Env):
 		orn = quaternion.from_float_array((orn[3], *orn[:3]))
 		vecX = quaternion.rotate_vectors(orn, np.array([1, 0, 0]))
 		vecY = quaternion.rotate_vectors(orn, np.array([0, 1, 0]))
-		jointAngles = []
-		jointSpeeds = []
-		for i in range(30):
-			(currentAngle, currentVel, _, _) = self._p.getJointState(self.atlas, i)
-			jointAngles.append(currentAngle)
-			jointSpeeds.append(currentVel)
+		jointAngles, jointSpeeds = self.getJointAnglesAndSpeeds()
 		desiredState = self.motionReader.getState(self.time)
 		desiredAngles = desiredState.getAngles()
 		dT = 0.01
@@ -73,6 +68,15 @@ class AtlasBulletEnv(gym.Env):
 		desiredBaseSpeed = (nextDesiredState.rootPosition - desiredState.rootPosition) / dT
 		obs = np.concatenate((pos[2:3], vecX, vecY, posSpeed, desiredBaseSpeed, ornSpeed, jointAngles, jointSpeeds, desiredAngles, desiredJointSpeeds))
 		return obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds, posSpeed, desiredBaseSpeed, pos, orn, desiredState
+
+	def getJointAnglesAndSpeeds(self):
+		jointAngles = np.zeros((30,))
+		jointSpeeds = np.zeros((30,))
+		for i in range(30):
+			(currentAngle, currentVel, _, _) = self._p.getJointState(self.atlas, i)
+			jointAngles[i] = currentAngle
+			jointSpeeds[i] = currentVel
+		return jointAngles,jointSpeeds
 
 	def seed(self, seed=None):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
@@ -109,14 +113,13 @@ class AtlasBulletEnv(gym.Env):
 		self._p.disconnect()
 
 	def step(self, action):
-		# Get action in residual style
-		desiredState = self.motionReader.getState(self.time)
-		desiredAction = desiredState.getAction()
-		# action = desiredAction + action
-		# action = action / 5.
+		# Execute action
+		desiredAngles = convertActionsToAngle(action)
+		jointAngles,jointSpeeds = self.getJointAnglesAndSpeeds()
+		torques = 1.0 * (desiredAngles - jointAngles) - 0.03 * jointSpeeds
+		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 
 		# Step simulation
-		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, action)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 		for _ in range(self.simStepsPerControlStep):
 			self._p.stepSimulation()
 			# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])
