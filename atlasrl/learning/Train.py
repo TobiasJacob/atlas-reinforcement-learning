@@ -25,8 +25,8 @@ if __name__ == "__main__":
         env = SubprocVecEnv([getBullentEnv(i) for i in range(16)]) 
         env = VecCheckNan(env, raise_exception=True)
         startI = 0
-        if False: # Use a pre-trained model, don't forget to set i=1:1000
-            model = PPO.load("runs/2021-10-13 13:26:43.882604/ModelTrained90M.torch")
+        if True: # Use a pre-trained model, don't forget to set i=1:1000
+            model = PPO.load("runs/reward2-2021-10-18 11:58:03.398274/ModelTrained115M.torch")
             model.env = env
             model.learn(total_timesteps=1000000)
             model.save(f"{log_dir}/ModelTrained1M.torch")
@@ -52,7 +52,7 @@ if __name__ == "__main__":
             model.learn(total_timesteps=1000000, reset_num_timesteps=False)
             model.save(f"{log_dir}/ModelTrained{i + 1}M.torch")
 
-    # model = PPO.load(f"runs/reward2-2021-10-15 10:21:55.729128/ModelTrained130M.torch")
+    model = PPO.load(f"runs/reward2-2021-10-18 11:58:03.398274/ModelTrained115M.torch")
     env = getBullentEnv(0)()
 
     obs = env.reset()

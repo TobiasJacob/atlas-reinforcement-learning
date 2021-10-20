@@ -20,7 +20,7 @@ class AtlasBulletEnv(gym.Env):
 		'video.frames_per_second': 60
 	}
 
-	def __init__(self, render=False, controlFreq=30., simStepsPerControlStep=1):
+	def __init__(self, render=False, controlFreq=30., simStepsPerControlStep=8):
 		super().__init__()
 		if render:
 			self.logger = SummaryWriter(f"runs/{datetime.datetime.now()}")
@@ -35,8 +35,6 @@ class AtlasBulletEnv(gym.Env):
 		self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
 		self._p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
 		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [0, 0, 1.0])
-		for i in range (self._p.getNumJoints(self.atlas)):
-			self._p.setJointMotorControl2(self.atlas, i, p.POSITION_CONTROL, 0)
 		self.plane = self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
 		self._p.setTimeStep(1/(controlFreq * simStepsPerControlStep))
 		self._p.setGravity(0,0,-9.81)
@@ -115,12 +113,13 @@ class AtlasBulletEnv(gym.Env):
 	def step(self, action):
 		# Execute action
 		desiredAngles = convertActionsToAngle(action)
-		jointAngles,jointSpeeds = self.getJointAnglesAndSpeeds()
-		torques = 1.0 * (desiredAngles - jointAngles) - 0.03 * jointSpeeds
-		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 
 		# Step simulation
 		for _ in range(self.simStepsPerControlStep):
+			jointAngles, jointSpeeds = self.getJointAnglesAndSpeeds()
+			torques = 1.0 * (desiredAngles - jointAngles) - 0.03 * jointSpeeds
+			torques *= gainArray
+			self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 			self._p.stepSimulation()
 			# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])
 		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=self.cameraStates[self.activeI][0], cameraPitch=self.cameraStates[self.activeI][1], cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
