@@ -1,14 +1,13 @@
-import os
 import gym, gym.spaces, gym.utils, gym.utils.seeding
 import numpy as np
-import pybullet as p
-from pybullet_utils.bullet_client import BulletClient
-import pybullet_data
 import socket
+from time import sleep
 
-from pkg_resources import parse_version
+import quaternion
 
-parameterNames = ['back_bkz', 'back_bky', 'back_bkx', 'l_arm_shz', 'l_arm_shx', 'l_arm_ely', 'l_arm_elx', 'l_arm_wry', 'l_arm_wrx', 'l_arm_wry2', 'neck_ry', 'r_arm_shz', 'r_arm_shx', 'r_arm_ely', 'r_arm_elx', 'r_arm_wry', 'r_arm_wrx', 'r_arm_wry2', 'l_leg_hpz', 'l_leg_hpx', 'l_leg_hpy', 'l_leg_kny', 'l_leg_aky', 'l_leg_akx', 'r_leg_hpz', 'r_leg_hpx', 'r_leg_hpy', 'r_leg_kny', 'r_leg_aky', 'r_leg_akx']
+from atlasrl.motions.MotionReader import MotionReader
+from atlasrl.robots.Constants import parameterNames
+
 
 class AtlasRemoteEnv(gym.Env):
 	metadata = {
@@ -16,18 +15,28 @@ class AtlasRemoteEnv(gym.Env):
 		'video.frames_per_second': 60
 	}
 
-	def __init__(self, render=False, address=("localhost", 15923)):
+	def __init__(self, render=False, address=("0.0.0.0", 15923), controlFreq=30.):
 		self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.s.connect(address)
+		self.motionReader = MotionReader.readClip()
+		while True:
+			try:
+				self.s.connect(address)
+				break
+			except ConnectionRefusedError:
+				print("ConnectionRefusedError, retry")
+				sleep(0.5)
+		print("Connected")
 		self.action_space = gym.spaces.Box(low=-1, high=1, shape=(30,))
-		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(7,))
+		self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(136,))
+		self.time = 0
+		self.timeDelta = 1. / controlFreq
 
 	def seed(self, seed=None):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
 		return [seed]
 
 	def reset(self):
-		return self.__parseSensors()
+		return self.getObservation()[0]
 
 	def render(self, mode = "human", close=False):
 		if mode == "human":
@@ -49,12 +58,31 @@ class AtlasRemoteEnv(gym.Env):
 		msg = msg[:-1] + "\n"
 		print(msg)
 		self.s.send(bytes(msg, "ascii"))
-		obs = self.__parseSensors()
+		obs = self.getObservation()[0]
+		self.time += self.timeDelta
 		return obs, None, False, {}
+
+	def getObservation(self):
+		resp = str(self.s.recv(4096), "ascii")
+		print(resp)
+		(pos, orn) = (np.zeros(3), np.array([0, 0, 0, 1]))
+		posSpeed, ornSpeed = (np.zeros(3), np.zeros(3))
+		orn = quaternion.from_float_array((orn[3], *orn[:3]))
+		vecX = quaternion.rotate_vectors(orn, np.array([1, 0, 0]))
+		vecY = quaternion.rotate_vectors(orn, np.array([0, 1, 0]))
+		jointAngles, jointSpeeds = np.zeros(30),np.zeros(30)
+		desiredState = self.motionReader.getState(self.time)
+		desiredAngles = desiredState.getAngles()
+		dT = 0.01
+		nextDesiredState = self.motionReader.getState(self.time + dT)
+		desiredJointSpeeds = (nextDesiredState.getAngles() - desiredAngles) / dT
+		desiredBaseSpeed = (nextDesiredState.rootPosition - desiredState.rootPosition) / dT
+		obs = np.concatenate((pos[2:3], vecX, vecY, posSpeed, desiredBaseSpeed, ornSpeed, jointAngles, jointSpeeds, desiredAngles, desiredJointSpeeds))
+		return obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds, posSpeed, desiredBaseSpeed, pos, orn, desiredState
 
 	def __parseSensors(self):
 		resp = str(self.s.recv(4096), "ascii")
-		# print(resp)
+		print(resp)
 		sensors = resp.split("/")
 		angles = sensors[0]
 		angles = angles.split(",")

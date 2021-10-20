@@ -1,7 +1,6 @@
 
 import numpy as np
 
-
 parameterNames = [
     'back_bkz',
     'back_bky',

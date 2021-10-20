@@ -8,7 +8,7 @@ import quaternion
 from quaternion.numba_wrapper import njit
 from numba.experimental import jitclass
 
-from atlasrl.robots.AtlasRemoteEnv import parameterNames
+from atlasrl.robots.Constants import parameterNames
 
 parameterIndex = {n: i for i, n in enumerate(parameterNames)}
 
