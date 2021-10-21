@@ -10,7 +10,6 @@ import pybullet_data
 from pkg_resources import parse_version
 from time import sleep
 import datetime
-from atlasrl.robots.Constants import gains, parameterNames
 
 from torch.utils.tensorboard import SummaryWriter
 from .Constants import convertActionSpaceToAngle, convertActionsToAngle, parameterNames, gainArray
@@ -21,7 +20,7 @@ class AtlasBulletEnv(gym.Env):
 		'video.frames_per_second': 60
 	}
 
-	def __init__(self, render=False, controlFreq=30., simStepsPerControlStep=8):
+	def __init__(self, render=False, controlFreq=30., simStepsPerControlStep=30):
 		super().__init__()
 		if render:
 			self.logger = SummaryWriter(f"runs/{datetime.datetime.now()}")
@@ -51,6 +50,9 @@ class AtlasBulletEnv(gym.Env):
 		self.time = 0
 		footJoints = ["l_leg_akx", "l_leg_aky", "l_leg_kny", "r_leg_akx", "r_leg_aky", "r_leg_kny"]
 		self.footLinks = [parameterNames.index(j) for j in footJoints]
+		for j in range(-1, 30):
+			self._p.changeDynamics(self.atlas, j, linearDamping=0, angularDamping=0, jointDamping=0, restitution=1)
+		self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.POSITION_CONTROL, forces=np.zeros(30,))#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 
 	def getObservation(self):
 		(pos, orn) = self._p.getBasePositionAndOrientation(self.atlas)
@@ -119,7 +121,7 @@ class AtlasBulletEnv(gym.Env):
 		for _ in range(self.simStepsPerControlStep):
 			jointAngles, jointSpeeds = self.getJointAnglesAndSpeeds()
 			torques = 1.0 * (desiredAngles - jointAngles) - 0.03 * jointSpeeds
-			torques *= gainArray
+			torques *= np.array(gainArray)
 			self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 			self._p.stepSimulation()
 			# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])

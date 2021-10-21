@@ -10,7 +10,6 @@ from stable_baselines3.common.monitor import Monitor
 import datetime
 from time import sleep
 
-from atlasrl.robots.AtlasBulletVecEnv import AtlasBulletVecEnv
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.vec_env import VecCheckNan
 
