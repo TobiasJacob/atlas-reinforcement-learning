@@ -8,7 +8,6 @@ import quaternion
 from atlasrl.motions.MotionReader import MotionReader
 from atlasrl.robots.Constants import parameterNames
 
-
 class AtlasRemoteEnv(gym.Env):
 	metadata = {
 		'render.modes': ['human', 'rgb_array'],

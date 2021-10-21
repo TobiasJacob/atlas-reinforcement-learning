@@ -10,6 +10,7 @@ import pybullet_data
 from pkg_resources import parse_version
 from time import sleep
 import datetime
+from atlasrl.robots.Constants import gains, parameterNames
 
 from torch.utils.tensorboard import SummaryWriter
 from .Constants import convertActionSpaceToAngle, convertActionsToAngle, parameterNames, gainArray

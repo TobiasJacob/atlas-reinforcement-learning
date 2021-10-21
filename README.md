@@ -70,3 +70,10 @@ python3 -m atlasrl.robots.AtlasRemoteEnv_test
 
 ## Reference motion player
 python -m atlasrl.simulator.ShowReferenceMotion
+
+## Running with ISAAC
+
+```console
+
+source ~/.local/share/ov/pkg/isaac_sim-2021.1.1/python_samples/setenv.sh
+```
