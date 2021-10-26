@@ -22,7 +22,7 @@ if __name__ == "__main__":
         policy_kwargs={"log_std_init": -2.5},
         tensorboard_log="runs/" + str(datetime.now())
     )
-    # model = PPO.load(f"runs/reward2-2021-10-18 11:58:03.398274/ModelTrained115M.torch")
+    model = PPO.load(f"runs/reward2-2021-10-23 14:29:42.544031/ModelTrained33M.torch")
 
     obs = env.reset()
     while True:
@@ -32,7 +32,7 @@ if __name__ == "__main__":
             if done:
                 obs = env.reset()
                 break
-            sleep(env.timeDelta * 30)
-        sleep(1)
+            sleep(env.timeDelta)
+        sleep(0.1)
 
     env.close()

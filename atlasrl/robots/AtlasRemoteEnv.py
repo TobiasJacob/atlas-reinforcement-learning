@@ -62,35 +62,55 @@ class AtlasRemoteEnv(gym.Env):
 		return obs, None, False, {}
 
 	def getObservation(self):
+		# Wait for obs
 		resp = str(self.s.recv(4096), "ascii")
 		print(resp)
-		(pos, orn) = (np.zeros(3), np.array([0, 0, 0, 1]))
+
+		# Message parsing
+		sensors = resp.split("/")
+		angles = sensors[0]
+		if len(angles) > 0 and angles != "null":
+			angles = angles.split(",")
+			angles = [a.split("=") for a in angles]
+			angles = {k: float(v) for (k, v) in angles}
+			jointAngles = np.array([angles[n] for n in parameterNames])
+		else:
+			jointAngles = np.zeros(30)
+		speeds = sensors[1]
+		if len(speeds) > 0 and speeds != "null":
+			speeds = speeds.split(",")
+			speeds = [a.split("=") for a in speeds]
+			speeds = {k: float(v) for (k, v) in speeds}
+			jointSpeeds = np.array([speeds[n] for n in parameterNames])
+		else:
+			jointSpeeds = np.zeros(30)
+		centerOfMassFrame = sensors[2]
+		if len(centerOfMassFrame) > 0 and centerOfMassFrame != "null":
+			centerOfMassFrame = centerOfMassFrame.split(",")
+			pos = np.array([float(c) for c in centerOfMassFrame])
+			orn = np.array([0, 0, 0, 1])
+		else:
+			(pos, orn) = (np.zeros(3), np.array([0, 0, 0, 1]))
+
+		# Convert values
 		posSpeed, ornSpeed = (np.zeros(3), np.zeros(3))
 		orn = quaternion.from_float_array((orn[3], *orn[:3]))
 		vecX = quaternion.rotate_vectors(orn, np.array([1, 0, 0]))
 		vecY = quaternion.rotate_vectors(orn, np.array([0, 1, 0]))
-		jointAngles, jointSpeeds = np.zeros(30),np.zeros(30)
 		desiredState = self.motionReader.getState(self.time)
 		desiredAngles = desiredState.getAngles()
 		dT = 0.01
 		nextDesiredState = self.motionReader.getState(self.time + dT)
 		desiredJointSpeeds = (nextDesiredState.getAngles() - desiredAngles) / dT
 		desiredBaseSpeed = (nextDesiredState.rootPosition - desiredState.rootPosition) / dT
+
+		# Concat
 		obs = np.concatenate((pos[2:3], vecX, vecY, posSpeed, desiredBaseSpeed, ornSpeed, jointAngles, jointSpeeds, desiredAngles, desiredJointSpeeds))
 		return obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds, posSpeed, desiredBaseSpeed, pos, orn, desiredState
 
 	def __parseSensors(self):
 		resp = str(self.s.recv(4096), "ascii")
 		print(resp)
-		sensors = resp.split("/")
-		angles = sensors[0]
-		angles = angles.split(",")
-		angles = [a.split("=") for a in angles]
-		angles = {k: float(v) for (k, v) in angles}
-		angles = [angles[n] for n in parameterNames]
-		centerOfMassFrame = sensors[1]
-		centerOfMassFrame = centerOfMassFrame.split(",")
-		centerOfMassFrame = [float(c) for c in centerOfMassFrame]
 		cop = sensors[2]
 		wristLeft = sensors[3]
 		wristRight = sensors[4]
