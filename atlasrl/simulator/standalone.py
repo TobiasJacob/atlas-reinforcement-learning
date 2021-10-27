@@ -7,9 +7,10 @@ import time,math
 path = "data/atlas/atlas_v4_with_multisense.urdf"
 
 p.connect(p.GUI)
-p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
+p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
 atlas = p.loadURDF(path, [-2,3,2.5])
+# atlas = p.loadSDF(path)[0]
 for i in range (p.getNumJoints(atlas)):
     p.setJointMotorControl2(atlas,i,p.POSITION_CONTROL,0)
     info = p.getJointInfo(atlas,i)

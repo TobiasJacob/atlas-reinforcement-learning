@@ -12,7 +12,7 @@ from time import sleep
 import datetime
 
 from torch.utils.tensorboard import SummaryWriter
-from .Constants import convertActionSpaceToAngle, convertActionsToAngle, parameterNames, gainArray
+from .Constants import convertActionSpaceToAngle, convertActionsToAngle, parameterNames, gainArray, dampingArray
 
 class AtlasBulletEnv(gym.Env):
 	metadata = {
@@ -127,8 +127,7 @@ class AtlasBulletEnv(gym.Env):
 		# Step simulation
 		for _ in range(self.simStepsPerControlStep):
 			jointAngles, jointSpeeds = self.getJointAnglesAndSpeeds()
-			torques = 1.0 * (desiredAngles - jointAngles) - 0.03 * jointSpeeds
-			torques *= np.array(gainArray)
+			torques = gainArray * (desiredAngles - jointAngles) - dampingArray * jointSpeeds
 			self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 			self._p.stepSimulation()
 			# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])

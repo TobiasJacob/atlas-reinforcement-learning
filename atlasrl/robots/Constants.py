@@ -34,35 +34,68 @@ parameterNames = [
 ]
 
 controllerGains = {
-    "l_leg_aky": 500.0,
-    "r_leg_aky": 500.0,
-    "l_leg_akx": 100.0,
-    "r_leg_akx": 100.0,
+    "l_leg_aky": 400.0,
+    "r_leg_aky": 400.0,
+    "l_leg_akx": 400.0,
+    "r_leg_akx": 400.0,
     "l_leg_kny": 500.0,
     "r_leg_kny": 500.0,
-    "l_leg_hpz": 100.0,
-    "r_leg_hpz": 100.0,
-    "l_leg_hpx": 300.0,
-    "r_leg_hpx": 300.0,
-    "l_leg_hpy": 300.0,
-    "r_leg_hpy": 300.0,
-    "back_bkz": 500.0,
-    "back_bky": 500.0,
-    "back_bkx": 500.0,
-    "r_arm_shz": 100.0,
-    "l_arm_shx": 100.0,
-    "r_arm_shx": 100.0,
-    "l_arm_ely": 100.0,
-    "r_arm_ely": 100.0,
-    "l_arm_elx": 100.0,
-    "r_arm_elx": 100.0,
-    "l_arm_wry": 10.0,
-    "r_arm_wry": 10.0,
-    "l_arm_wrx": 10.0,
-    "r_arm_wrx": 10.0,
-    "l_arm_wry2": 10.0,
-    "r_arm_wry2": 10.0,
-    "l_arm_shz": 10.0,
+    "l_leg_hpz": 500.0,
+    "r_leg_hpz": 500.0,
+    "l_leg_hpx": 500.0,
+    "r_leg_hpx": 500.0,
+    "l_leg_hpy": 500.0,
+    "r_leg_hpy": 500.0,
+    "back_bkz": 1000.0,
+    "back_bky": 1000.0,
+    "back_bkx": 1000.0,
+    "l_arm_shz": 400.0,
+    "r_arm_shz": 400.0,
+    "l_arm_shx": 400.0,
+    "r_arm_shx": 400.0,
+    "l_arm_ely": 300.0,
+    "r_arm_ely": 300.0,
+    "l_arm_elx": 300.0,
+    "r_arm_elx": 300.0,
+    "l_arm_wry": 100.0,
+    "r_arm_wry": 100.0,
+    "l_arm_wrx": 100.0,
+    "r_arm_wrx": 100.0,
+    "l_arm_wry2": 100.0,
+    "r_arm_wry2": 100.0,
+    "neck_ry": 100.0,
+}
+
+controllerDamping = {
+    "l_leg_aky": 10.0,
+    "r_leg_aky": 10.0,
+    "l_leg_akx": 10.0,
+    "r_leg_akx": 10.0,
+    "l_leg_kny": 20.0,
+    "r_leg_kny": 20.0,
+    "l_leg_hpz": 40.0,
+    "r_leg_hpz": 40.0,
+    "l_leg_hpx": 40.0,
+    "r_leg_hpx": 40.0,
+    "l_leg_hpy": 40.0,
+    "r_leg_hpy": 40.0,
+    "back_bkz": 70.0,
+    "back_bky": 70.0,
+    "back_bkx": 70.0,
+    "l_arm_shz": 30.0,
+    "r_arm_shz": 30.0,
+    "l_arm_shx": 30.0,
+    "r_arm_shx": 30.0,
+    "l_arm_ely": 30.0,
+    "r_arm_ely": 30.0,
+    "l_arm_elx": 30.0,
+    "r_arm_elx": 30.0,
+    "l_arm_wry": 5.0,
+    "r_arm_wry": 5.0,
+    "l_arm_wrx": 5.0,
+    "r_arm_wrx": 5.0,
+    "l_arm_wry2": 5.0,
+    "r_arm_wry2": 5.0,
     "neck_ry": 10.0,
 }
 
@@ -70,6 +103,12 @@ controllerGains = {
 gainArray = []
 for k in parameterNames:
     gainArray.append(controllerGains[k])
+gainArray = np.array(gainArray)
+
+dampingArray = []
+for k in parameterNames:
+    dampingArray.append(controllerDamping[k])
+dampingArray = np.array(dampingArray)
 
 JOINT_LIMITS_PYBULLET = {
     "back_bkz": (-0.663225, 0.663225),
