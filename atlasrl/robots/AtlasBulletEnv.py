@@ -107,7 +107,7 @@ class AtlasBulletEnv(gym.Env):
 		keys = p.getKeyboardEvents()
 		if keys.get(100) == 3:  #D
 			self.activeI = (self.activeI + 1) % len(self.cameraStates)
-		
+
 		if mode == "human":
 			return
 		if mode != "rgb_array":
@@ -137,7 +137,7 @@ class AtlasBulletEnv(gym.Env):
 
 		# Observe
 		obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds, posSpeed, desiredBaseSpeed, pos, orn, desiredState = self.getObservation()
-	
+
 		# Calculate Reward
 		jointDiff = np.square(desiredAngles - jointAngles).mean()
 		rewardJoint = np.exp(-10 * jointDiff)

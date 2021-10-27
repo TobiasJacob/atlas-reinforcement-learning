@@ -55,16 +55,16 @@ class AtlasRemoteEnv(gym.Env):
 		for (targetAngle, name) in zip(action, parameterNames):
 			msg += name + "=" + str(targetAngle) + ","
 		msg = msg[:-1] + "\n"
-		print(msg)
+		# print(msg)
 		self.s.send(bytes(msg, "ascii"))
-		obs = self.getObservation()
 		self.time += self.timeDelta
+		obs = self.getObservation()
 		return obs[0], None, False, {"orn": obs[8]}
 
 	def getObservation(self):
 		# Wait for obs
 		resp = str(self.s.recv(4096), "ascii")
-		print(resp)
+		# print(resp)
 
 		# Message parsing
 		sensors = resp.split("/")
@@ -90,11 +90,12 @@ class AtlasRemoteEnv(gym.Env):
 			data = np.array([float(c) for c in centerOfMassFrame])
 			pos = data[0:3]
 			orn = data[3:7]
+			posSpeed, ornSpeed = (data[7:10], data[10:13])
 		else:
-			(pos, orn) = (np.zeros(3), np.array([0, 0, 0, 1]))
+			pos, orn = (np.zeros(3), np.array([0, 0, 0, 1]))
+			posSpeed, ornSpeed = (np.zeros(3), np.zeros(3))
 
 		# Convert values
-		posSpeed, ornSpeed = (np.zeros(3), np.zeros(3))
 		orn = quaternion.from_float_array((orn[3], *orn[:3]))
 		vecX = quaternion.rotate_vectors(orn, np.array([1, 0, 0]))
 		vecY = quaternion.rotate_vectors(orn, np.array([0, 1, 0]))
