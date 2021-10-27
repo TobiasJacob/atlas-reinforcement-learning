@@ -10,6 +10,7 @@ import pybullet_data
 from pkg_resources import parse_version
 from time import sleep
 import datetime
+from queue import Queue
 
 from torch.utils.tensorboard import SummaryWriter
 from .Constants import convertActionSpaceToAngle, convertActionsToAngle, parameterNames, gainArray, dampingArray
@@ -89,18 +90,34 @@ class AtlasBulletEnv(gym.Env):
 			# Setting atlas to random initial position with noise
 			self.time = np.random.rand() * self.motionReader.frames[-1].absoluteTime
 			motionState = self.motionReader.getState(self.time)
-			angles = motionState.getAngles() + np.random.normal(size=30) * 0.1
+			angles = motionState.getAngles() + np.random.normal(size=30) * 0.3
 			targetPos, targetOrn = motionState.rootPosition, motionState.rootRotation
 			targetOrnAsArray = quaternion.as_float_array(targetOrn)
-			self._p.resetBasePositionAndOrientation(self.atlas, targetPos + np.array([0, 0, 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
 			for i in range(30):
 				self._p.resetJointState(self.atlas, i, angles[i])
+			self.gainArray = gainArray * (1 + np.random.normal(size=30) * 0.1)
+			self.dampingArray = dampingArray * (1 + np.random.normal(size=30) * 0.1)
+			self.latencyQueue = Queue(np.random.randint(1, 5))
+			for i in range(-1, 30):
+				info = self._p.getDynamicsInfo(self.atlas, i)
+				mass = info[0] * (1 + np.random.normal() * 0.1)
+				lateralFriction = info[1] * (1 + np.random.normal() * 0.1)
+				spinningFriction = info[7] * (1 + np.random.normal() * 0.1)
+				self._p.changeDynamics(self.atlas, -1, mass=mass, lateralFriction=lateralFriction, spinningFriction=spinningFriction)
+			self._p.resetBasePositionAndOrientation(self.atlas, np.array([targetPos[0], targetPos[1], 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
+			(aabbR, _) = self._p.getAABB(self.atlas, parameterNames.index("r_leg_aky"))
+			(aabbL, _) = self._p.getAABB(self.atlas, parameterNames.index("l_leg_aky"))
+			self._p.resetBasePositionAndOrientation(self.atlas, np.array([targetPos[0], targetPos[1], 1 - min(aabbL[2], aabbR[2]) + np.random.exponential(0.03)]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
 		else:
 			self.time = 0
 			self._p.resetBasePositionAndOrientation(self.atlas, np.array([0, 0, 0.95]), [0, 0, 0, 1])
 
 			for i in range(30):
 				self._p.resetJointState(self.atlas, i, 0)
+			self.gainArray = gainArray * (1 + np.random.normal(size=30) * 0.1)
+			self.dampingArray = dampingArray * (1 + np.random.normal(size=30) * 0.1)
+			self.latencyQueue = Queue(1)
+			
 		return self.getObservation()[0]
 
 	def render(self, mode = "human", close=False):
@@ -121,13 +138,18 @@ class AtlasBulletEnv(gym.Env):
 		self._p.disconnect()
 
 	def step(self, action):
+		self.latencyQueue.put(action)
+		if self.latencyQueue.qsize() == self.latencyQueue.maxsize:
+			action = self.latencyQueue.get()
+		else:
+			action = np.zeros_like(action)
 		# Execute action
 		desiredAngles = convertActionsToAngle(action)
 
 		# Step simulation
 		for _ in range(self.simStepsPerControlStep):
 			jointAngles, jointSpeeds = self.getJointAnglesAndSpeeds()
-			torques = gainArray * (desiredAngles - jointAngles) - dampingArray * jointSpeeds
+			torques = self.gainArray * (desiredAngles - jointAngles) - self.dampingArray * jointSpeeds
 			self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 			self._p.stepSimulation()
 			# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])
