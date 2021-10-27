@@ -57,9 +57,9 @@ class AtlasRemoteEnv(gym.Env):
 		msg = msg[:-1] + "\n"
 		print(msg)
 		self.s.send(bytes(msg, "ascii"))
-		obs = self.getObservation()[0]
+		obs = self.getObservation()
 		self.time += self.timeDelta
-		return obs, None, False, {}
+		return obs[0], None, False, {"orn": obs[8]}
 
 	def getObservation(self):
 		# Wait for obs
@@ -87,8 +87,9 @@ class AtlasRemoteEnv(gym.Env):
 		centerOfMassFrame = sensors[2]
 		if len(centerOfMassFrame) > 0 and centerOfMassFrame != "null":
 			centerOfMassFrame = centerOfMassFrame.split(",")
-			pos = np.array([float(c) for c in centerOfMassFrame])
-			orn = np.array([0, 0, 0, 1])
+			data = np.array([float(c) for c in centerOfMassFrame])
+			pos = data[0:3]
+			orn = data[3:7]
 		else:
 			(pos, orn) = (np.zeros(3), np.array([0, 0, 0, 1]))
 
@@ -107,12 +108,3 @@ class AtlasRemoteEnv(gym.Env):
 		# Concat
 		obs = np.concatenate((pos[2:3], vecX, vecY, posSpeed, desiredBaseSpeed, ornSpeed, jointAngles, jointSpeeds, desiredAngles, desiredJointSpeeds))
 		return obs, desiredAngles, jointAngles, jointSpeeds, desiredJointSpeeds, posSpeed, desiredBaseSpeed, pos, orn, desiredState
-
-	def __parseSensors(self):
-		resp = str(self.s.recv(4096), "ascii")
-		print(resp)
-		cop = sensors[2]
-		wristLeft = sensors[3]
-		wristRight = sensors[4]
-		print(angles, centerOfMassFrame)
-		return (angles, centerOfMassFrame)

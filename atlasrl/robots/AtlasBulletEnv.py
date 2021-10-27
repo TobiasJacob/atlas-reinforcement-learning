@@ -83,17 +83,24 @@ class AtlasBulletEnv(gym.Env):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
 		return [seed]
 
-	def reset(self):
+	def reset(self, randomStartPosition=True):
 		self._p.restoreState(self.initialState)
-		# Setting atlas to random initial position with noise
-		self.time = np.random.rand() * self.motionReader.frames[-1].absoluteTime
-		motionState = self.motionReader.getState(self.time)
-		angles = motionState.getAngles() + np.random.normal(size=30) * 0.1
-		targetPos, targetOrn = motionState.rootPosition, motionState.rootRotation
-		targetOrnAsArray = quaternion.as_float_array(targetOrn)
-		self._p.resetBasePositionAndOrientation(self.atlas, targetPos + np.array([0, 0, 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
-		for i in range(30):
-			self._p.resetJointState(self.atlas, i, angles[i])
+		if randomStartPosition:
+			# Setting atlas to random initial position with noise
+			self.time = np.random.rand() * self.motionReader.frames[-1].absoluteTime
+			motionState = self.motionReader.getState(self.time)
+			angles = motionState.getAngles() + np.random.normal(size=30) * 0.1
+			targetPos, targetOrn = motionState.rootPosition, motionState.rootRotation
+			targetOrnAsArray = quaternion.as_float_array(targetOrn)
+			self._p.resetBasePositionAndOrientation(self.atlas, targetPos + np.array([0, 0, 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
+			for i in range(30):
+				self._p.resetJointState(self.atlas, i, angles[i])
+		else:
+			self.time = 0
+			self._p.resetBasePositionAndOrientation(self.atlas, np.array([0, 0, 0.95]), [0, 0, 0, 1])
+
+			for i in range(30):
+				self._p.resetJointState(self.atlas, i, 0)
 		return self.getObservation()[0]
 
 	def render(self, mode = "human", close=False):
@@ -171,4 +178,4 @@ class AtlasBulletEnv(gym.Env):
 				self.logger.add_scalar("rollout/episodeLen", self.time, self.globalStep)
 			self.globalStep += 1
 
-		return obs, reward, done, {}
+		return obs, None, False, {"orn": orn}
