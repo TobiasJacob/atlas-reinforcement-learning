@@ -6,11 +6,12 @@ from time import sleep
 from atlasrl.robots.AtlasBulletEnv import AtlasBulletEnv
 
 from atlasrl.robots.AtlasRemoteEnv import AtlasRemoteEnv
+from atlasrl.robots.Constants import parameterNames
 
 
 if __name__ == "__main__":
     # env = AtlasBulletEnv(render=True)
-    envDC = AtlasBulletEnv(render=True)
+    envDC = AtlasBulletEnv(render=True, simStepsPerControlStep=1000)
     env = AtlasRemoteEnv()
     model = PPO(
         "MlpPolicy",
@@ -32,6 +33,8 @@ if __name__ == "__main__":
     obsDC = envDC.reset(randomStartPosition=False)
     for i in range(1000):
         action, _states = model.predict(obs, deterministic=False)
+        # action[parameterNames.index("back_bky")] += -0.16
+        # action[parameterNames.index("back_bkx")] += 0.08
         obs, reward, done, info = env.step(action)
         # Parse obs
         Z = obs[0]
@@ -40,14 +43,14 @@ if __name__ == "__main__":
         jointSpeeds = obs[46:76]
         baseSpeed, baseOrn = obs[7:10], obs[13:16]
         # Sync DCEnv
-        envDC.time = env.time
-        if i < 30:
-            envDC._p.resetBasePositionAndOrientation(envDC.atlas, np.array([0, 0, Z]), np.array([*orn[1:4], orn[0]]))
+        if i < 1000:
+            envDC._p.resetBasePositionAndOrientation(envDC.atlas, np.array([0, 0, Z + 0.03]), np.array([*orn[1:4], orn[0]]))
             envDC._p.resetBaseVelocity(envDC.atlas, baseSpeed, baseOrn)
             for i in range(30):
                 envDC._p.resetJointState(envDC.atlas, i, jointAngles[i], jointSpeeds[i])
         obsDC, _, _, _ = envDC.step(action)
         # obsDC = envDC.getObservation()[0]
+        # envDC.time = env.time
         # Compare observation
         print(np.abs(obs - obsDC).max())
         if np.abs(obs - obsDC).max() > 1e-0:
