@@ -24,8 +24,8 @@ if __name__ == "__main__":
         env = SubprocVecEnv([getBullentEnv(i) for i in range(16)]) 
         env = VecCheckNan(env, raise_exception=True)
         startI = 0
-        if False: # Use a pre-trained model, don't forget to set i=1:1000
-            model = PPO.load("runs/reward2-2021-10-22 14:19:49.633694/ModelTrained33M.torch")
+        if True: # Use a pre-trained model, don't forget to set i=1:1000
+            model = PPO.load("runs/domainRandomization-2021-10-30 01:35:27.563237/ModelTrained35M.torch")
             model.env = env
             model.learn(total_timesteps=1000000)
             model.save(f"{log_dir}/ModelTrained1M.torch")

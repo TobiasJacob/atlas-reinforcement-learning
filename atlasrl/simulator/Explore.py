@@ -7,7 +7,7 @@ from atlasrl.robots.AtlasBulletEnv import AtlasBulletEnv
 import pybullet as p
 
 env = AtlasBulletEnv(render=True)
-env.reset()
+env.reset(randomStartPosition=False)
 time = 0
 lastPosErr = np.zeros(3)
 lastTorqueErr = np.zeros(3)

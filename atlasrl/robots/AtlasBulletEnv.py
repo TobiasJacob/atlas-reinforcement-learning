@@ -141,18 +141,18 @@ class AtlasBulletEnv(gym.Env):
 		self.latencyQueue.put(action)
 		if self.latencyQueue.qsize() == self.latencyQueue.maxsize:
 			action = self.latencyQueue.get()
-		else:
-			action = np.zeros_like(action)
-		# Execute action
-		desiredAngles = convertActionsToAngle(action)
+			# Execute action
+			desiredAngles = convertActionsToAngle(action)
 
-		# Step simulation
-		for _ in range(self.simStepsPerControlStep):
-			jointAngles, jointSpeeds = self.getJointAnglesAndSpeeds()
-			torques = self.gainArray * (desiredAngles - jointAngles) - self.dampingArray * jointSpeeds
-			self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
-			self._p.stepSimulation()
-			# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])
+			# Step simulation
+			randomForce = np.random.normal(size=3) * 10
+			for _ in range(self.simStepsPerControlStep):
+				jointAngles, jointSpeeds = self.getJointAnglesAndSpeeds()
+				torques = self.gainArray * (desiredAngles - jointAngles) - self.dampingArray * jointSpeeds
+				self._p.setJointMotorControlArray(self.atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
+				self._p.applyExternalForce(self.atlas, -1, randomForce, np.zeros(3), p.WORLD_FRAME)
+				self._p.stepSimulation()
+				# sleep(self._p.getPhysicsEngineParameters()["fixedTimeStep"])
 		self._p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=self.cameraStates[self.activeI][0], cameraPitch=self.cameraStates[self.activeI][1], cameraTargetPosition=self._p.getBasePositionAndOrientation(self.atlas)[0])
 		self.time += self.timeDelta
 
@@ -199,4 +199,4 @@ class AtlasBulletEnv(gym.Env):
 				self.logger.add_scalar("rollout/episodeLen", self.time, self.globalStep)
 			self.globalStep += 1
 
-		return obs, None, False, {"orn": orn}
+		return obs, reward, done, {"orn": orn}
