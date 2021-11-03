@@ -84,30 +84,32 @@ class AtlasBulletEnv(gym.Env):
 		self.np_random, seed = gym.utils.seeding.np_random(seed)
 		return [seed]
 
-	def reset(self, randomStartPosition=True):
+	def reset(self, randomStartPosition=False):
 		self._p.restoreState(self.initialState)
 		if randomStartPosition:
 			# Setting atlas to random initial position with noise
 			self.time = np.random.rand() * self.motionReader.frames[-1].absoluteTime
-			motionState = self.motionReader.getState(self.time)
-			angles = motionState.getAngles() + np.random.normal(size=30) * 0.3
-			targetPos, targetOrn = motionState.rootPosition, motionState.rootRotation
-			targetOrnAsArray = quaternion.as_float_array(targetOrn)
-			for i in range(30):
-				self._p.resetJointState(self.atlas, i, angles[i])
+			# motionState = self.motionReader.getState(self.time)
+			# angles = motionState.getAngles() + np.random.normal(size=30) * 0.3
+			# targetPos, targetOrn = motionState.rootPosition, motionState.rootRotation
+			# targetOrnAsArray = quaternion.as_float_array(targetOrn)
+			# for i in range(30):
+			# 	self._p.resetJointState(self.atlas, i, angles[i])
 			self.gainArray = gainArray * (1 + np.random.normal(size=30) * 0.1)
 			self.dampingArray = dampingArray * (1 + np.random.normal(size=30) * 0.1)
-			self.latencyQueue = Queue(np.random.randint(1, 5))
+			# self.latencyQueue = Queue(np.random.randint(1, 5))
+			self.latencyQueue = Queue(1)
 			for i in range(-1, 30):
 				info = self._p.getDynamicsInfo(self.atlas, i)
 				mass = info[0] * (1 + np.random.normal() * 0.1)
 				lateralFriction = info[1] * (1 + np.random.normal() * 0.1)
 				spinningFriction = info[7] * (1 + np.random.normal() * 0.1)
 				self._p.changeDynamics(self.atlas, -1, mass=mass, lateralFriction=lateralFriction, spinningFriction=spinningFriction)
-			self._p.resetBasePositionAndOrientation(self.atlas, np.array([targetPos[0], targetPos[1], 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
+			# self._p.resetBasePositionAndOrientation(self.atlas, np.array([targetPos[0], targetPos[1], 1]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
 			(aabbR, _) = self._p.getAABB(self.atlas, parameterNames.index("r_leg_aky"))
 			(aabbL, _) = self._p.getAABB(self.atlas, parameterNames.index("l_leg_aky"))
-			self._p.resetBasePositionAndOrientation(self.atlas, np.array([targetPos[0], targetPos[1], 1 - min(aabbL[2], aabbR[2]) + np.random.exponential(0.03)]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
+			self._p.resetBasePositionAndOrientation(self.atlas, np.array([0, 0, 1 - min(aabbL[2], aabbR[2]) + np.random.exponential(0.03) + 0.1]), [0, 0, 0, 1])
+			# self._p.resetBasePositionAndOrientation(self.atlas, np.array([targetPos[0], targetPos[1], 1 - min(aabbL[2], aabbR[2]) + np.random.exponential(0.03) + 0.01]), [*targetOrnAsArray[1:4], targetOrnAsArray[0]])
 		else:
 			self.time = 0
 			self._p.resetBasePositionAndOrientation(self.atlas, np.array([0, 0, 0.95]), [0, 0, 0, 1])

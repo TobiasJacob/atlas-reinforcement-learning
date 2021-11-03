@@ -27,7 +27,7 @@ if __name__ == "__main__":
         policy_kwargs={"log_std_init": -2.5},
         tensorboard_log="runs/" + str(datetime.now())
     )
-    model = PPO.load(f"runs/reward2-2021-10-23 14:29:42.544031/ModelTrained33M.torch")
+    model = PPO.load(f"runs/littleRandomization-2021-11-02 01:18:17.536564/ModelTrained24M.torch")
 
     obs = env.reset()
     obsDC = envDC.reset(randomStartPosition=False)
