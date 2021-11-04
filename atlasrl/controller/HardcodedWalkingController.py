@@ -106,10 +106,10 @@ while (1):
     # Calculate Wrists
     (atlasWorldPos, atlasWorldOrn) = p.getBasePositionAndOrientation(atlas)
     (atlasWorldSpeed, atlasAngularSpeed) = p.getBaseVelocity(atlas)
-    positionError = np.array([0.00, 0, 1.3]) - centerOfMass
+    positionError = np.array([0.00, 0, 1.35]) - centerOfMass
     positionError -= np.array(atlasWorldSpeed) * 0.1
     wristsPower = 1.0 + positionError[2]
-    print(wristsPower)
+    print(wristsPower, positionError)
     wristsMoments = -np.array((-positionError[1], positionError[0], 0)) * 300
     wristRight = np.array([0, 0, 9.81 * totalMass / 2 * wristsPower * (1 - positionError[1] * 0.2)])
     wristLeft = np.array([0, 0, 9.81 * totalMass / 2 * wristsPower * (1 + positionError[1] * 0.2)])
@@ -119,12 +119,14 @@ while (1):
     angularAcceleration = np.zeros((31, 3)) # TODO: calculate the actual linear acceleration based on wrist power
     wristLeftLoc = p.getLinkState(atlas, parameterNames.index("l_leg_akx"))[0]
     wristRightLoc = p.getLinkState(atlas, parameterNames.index("r_leg_akx"))[0]
-    linearAcceleration[0] = (np.array([0, 0, 9.81 * totalMass]) - wristRight - wristLeft) / totalMass
-    angularAcceleration[0] = np.linalg.inv(totalInertia) @ (np.cross(wristLeftLoc - centerOfMass, wristLeft) + np.cross(wristRightLoc - centerOfMass, wristRight) + 2 * wristsMoments)
+    comBaseJointOffset = atlasWorldPos - centerOfMass
+    linearAcceleration[0] = (-np.array([0, 0, 9.81 * totalMass]) + wristRight + wristLeft) / totalMass
+    # angularAcceleration[0] = np.linalg.inv(totalInertia) @ (np.cross(wristLeftLoc - centerOfMass, wristLeft) + np.cross(wristRightLoc - centerOfMass, wristRight) + 2 * wristsMoments)
+    linearAcceleration[0] += np.cross(angularAcceleration[0], comBaseJointOffset)
     print(linearAcceleration[0], angularAcceleration[0])
     desiredJointAcceleration = np.zeros(30)
-    k_p = 1.
-    k_d = k_p * 0.0
+    k_p = 0.
+    k_d = k_p * 0.03
     desiredJointAcceleration = - k_p * (qJoints - qDesired) - k_d * qDotJoints
     for i in range(30):
         (_, _, _, _, _, flags, damping, friction, _, _, _, _, linkName, jointAxis, parentFramePos, parentFrameOrn, parentIndex) = p.getJointInfo(atlas, i)
@@ -189,6 +191,7 @@ while (1):
     # print("torques")
     # print(torques)
     print("Leftover force and moment:", forces[0], moments[0], "total:", totalMass)
+    break
     # print(torques)
     # break
     # 2. Step: Calculate all torques according to the pricinple of virtual work
