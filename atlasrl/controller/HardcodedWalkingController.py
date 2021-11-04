@@ -12,6 +12,11 @@ p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
 atlas = p.loadURDF(path, [0, 0, 0.95])
 
+def skew(x):
+    return np.array([[0, -x[2], x[1]],
+                     [x[2], 0, -x[0]],
+                     [-x[1], x[0], 0]])
+
 p.setJointMotorControlArray(atlas, np.arange(30), p.VELOCITY_CONTROL, forces=np.zeros(30,))#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
 dt = 0.001
 p.setTimeStep(dt)
@@ -81,17 +86,46 @@ while (1):
     # torques = np.array(p.calculateInverseDynamics(atlas, q.tolist(), qDot.tolist(), desiredQDotDot.tolist()))
 
     # Solve inverse dynamics problem
+    # Step 0: Get center of mass
+    totalMass = 0
+    centerOfMass = np.zeros(3)
+    totalInertia = np.zeros((3, 3))
+    for i in range(30):
+        (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
+        (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _, _, linkAngularVelocity) = p.getLinkState(atlas, i, computeLinkVelocity=True)
+        linkInertiaPos = np.array(p.rotateVector(linkWorldOrn, linkInertiaPos))
+        centerOfMass += mass * np.array(linkInertiaPos + linkWorldPos)
+        totalMass += mass
+    centerOfMass /= totalMass
+    for i in range(30):
+        (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
+        (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _, _, linkAngularVelocity) = p.getLinkState(atlas, i, computeLinkVelocity=True)
+        linkInertiaPos = np.array(p.rotateVector(linkWorldOrn, linkInertiaPos))
+        totalInertia += skew(linkInertiaPos - centerOfMass) * mass
+        totalInertia += np.diag(p.rotateVector(linkWorldOrn, p.rotateVector(linkInertiaOrn, local_inertia_diagonal)))
+    # Calculate Wrists
+    (atlasWorldPos, atlasWorldOrn) = p.getBasePositionAndOrientation(atlas)
+    (atlasWorldSpeed, atlasAngularSpeed) = p.getBaseVelocity(atlas)
+    positionError = np.array([0.00, 0, 1.3]) - centerOfMass
+    positionError -= np.array(atlasWorldSpeed) * 0.1
+    wristsPower = 1.0 + positionError[2]
+    print(wristsPower)
+    wristsMoments = -np.array((-positionError[1], positionError[0], 0)) * 300
+    wristRight = np.array([0, 0, 9.81 * totalMass / 2 * wristsPower * (1 - positionError[1] * 0.2)])
+    wristLeft = np.array([0, 0, 9.81 * totalMass / 2 * wristsPower * (1 + positionError[1] * 0.2)])
 
     # 1. Step: Calculate accelerations of all inertias
     linearAcceleration = np.zeros((31, 3)) # TODO: calculate the actual linear acceleration based on wrist power
-    linearAcceleration[0, 2] = 0
-    angularAcceleration = np.zeros((31, 3))
+    angularAcceleration = np.zeros((31, 3)) # TODO: calculate the actual linear acceleration based on wrist power
+    wristLeftLoc = p.getLinkState(atlas, parameterNames.index("l_leg_akx"))[0]
+    wristRightLoc = p.getLinkState(atlas, parameterNames.index("r_leg_akx"))[0]
+    linearAcceleration[0] = (np.array([0, 0, 9.81 * totalMass]) - wristRight - wristLeft) / totalMass
+    angularAcceleration[0] = np.linalg.inv(totalInertia) @ (np.cross(wristLeftLoc - centerOfMass, wristLeft) + np.cross(wristRightLoc - centerOfMass, wristRight) + 2 * wristsMoments)
+    print(linearAcceleration[0], angularAcceleration[0])
     desiredJointAcceleration = np.zeros(30)
     k_p = 1.
-    k_d = k_p * 0.01
+    k_d = k_p * 0.0
     desiredJointAcceleration = - k_p * (qJoints - qDesired) - k_d * qDotJoints
-    totalMass = 0
-    centerOfMass = np.zeros(3)
     for i in range(30):
         (_, _, _, _, _, flags, damping, friction, _, _, _, _, linkName, jointAxis, parentFramePos, parentFrameOrn, parentIndex) = p.getJointInfo(atlas, i)
         if parentIndex != -1:
@@ -110,17 +144,8 @@ while (1):
         # consisting of acceleration force and centrifugal force
         linearAcceleration[1+i] = linearAcceleration[1+parentIndex] + (desiredJointAcceleration[parentIndex] if parentIndex != -1 else 0) * np.cross(parentJointAxis, parentFramePos) + np.cross(np.cross(parentFramePos, parentAngularVel), parentAngularVel)
         angularAcceleration[1+i] = angularAcceleration[1+parentIndex] + globalJointAxis
-        totalMass += mass
-        centerOfMass += mass * np.array(linkInertiaPos + linkWorldPos)
 
-    centerOfMass /= totalMass
     # Choose wrists and root acc
-    (atlasWorldPos, atlasWorldOrn) = p.getBasePositionAndOrientation(atlas)
-    positionError = np.array([0.00, 0, 1.3]) - centerOfMass
-    print(positionError)
-    wristsPower = 1.0 + positionError[2] * 1.0
-    wristsMoments = -np.array((-positionError[1], positionError[0], 0)) * 300
-
     forces = np.zeros((31, 3))
     moments = np.zeros((31, 3))
     torques = np.zeros(30)
@@ -141,14 +166,14 @@ while (1):
         forces[1+i] += mass * (linearAcceleration[i] + np.array([0, 0, 9.81])) + mass * np.cross(np.cross(local_inertia_pos, linkAngularVelocity), linkAngularVelocity) + mass * np.cross(local_inertia_pos, angularAcceleration[i])
         moments[1+i] += np.cross(local_inertia_pos, forces[1+i])
         if i == parameterNames.index("r_leg_akx"):
-            forces[1+i, 2] -= 9.81 * totalMass / 2 * wristsPower * (1 - positionError[1] * 0.2)
+            forces[1+i] -= wristRight
             moments[1+i] += wristsMoments
         if i == parameterNames.index("l_leg_akx"):
-            forces[1+i, 2] -= 9.81 * totalMass / 2 * wristsPower * (1 + positionError[1] * 0.2)
+            forces[1+i] -= wristLeft
             moments[1+i] += wristsMoments
             # TODO: Add moment here depending on center of pressure
         forces[1+parentIndex] += forces[1+i]
-        moments[1+i] += np.diag(p.rotateVector(linkInertiaOrn, local_inertia_diagonal)) @ angularAcceleration[i]
+        moments[1+i] += np.diag(p.rotateVector(linkWorldOrn, p.rotateVector(linkInertiaOrn, local_inertia_diagonal))) @ angularAcceleration[i]
         moments[1+parentIndex] += moments[1+i] + np.cross(parentFramePos, forces[1+i])
         torques[i] = np.dot(moments[1+i], globalJointAxis) # np.dot(np.cross(forces[1+i], globalJointAxis), globalJointAxis)
     # print("linearAcceleration")
