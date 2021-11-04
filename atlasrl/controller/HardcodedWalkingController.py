@@ -33,6 +33,7 @@ np.set_printoptions(suppress=True)
 np.set_printoptions(linewidth=np.inf)
 np.set_printoptions(precision=4)
 t=0
+(startWorldPos, _) = p.getBasePositionAndOrientation(atlas)
 # p.setRealTimeSimulation(1)
 while (1):
     time.sleep(0.01)
@@ -80,14 +81,17 @@ while (1):
     # torques = np.array(p.calculateInverseDynamics(atlas, q.tolist(), qDot.tolist(), desiredQDotDot.tolist()))
 
     # Solve inverse dynamics problem
+
     # 1. Step: Calculate accelerations of all inertias
-    linearAcceleration = np.zeros((31, 3))
+    linearAcceleration = np.zeros((31, 3)) # TODO: calculate the actual linear acceleration based on wrist power
+    linearAcceleration[0, 2] = 0
     angularAcceleration = np.zeros((31, 3))
     desiredJointAcceleration = np.zeros(30)
-    k_p = 50.
-    k_d = k_p * 0.1
+    k_p = 1.
+    k_d = k_p * 0.01
     desiredJointAcceleration = - k_p * (qJoints - qDesired) - k_d * qDotJoints
     totalMass = 0
+    centerOfMass = np.zeros(3)
     for i in range(30):
         (_, _, _, _, _, flags, damping, friction, _, _, _, _, linkName, jointAxis, parentFramePos, parentFrameOrn, parentIndex) = p.getJointInfo(atlas, i)
         if parentIndex != -1:
@@ -98,14 +102,24 @@ while (1):
             (parentWorldPos, parentWorldOrn) = p.getBasePositionAndOrientation(atlas)
             (_, parentAngularVel) = p.getBaseVelocity(atlas)
         (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
-        (linkWorldPos, linkWorldOrn, _, _, _, _) = p.getLinkState(atlas, i)
+        (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _, _, linkAngularVelocity) = p.getLinkState(atlas, i, computeLinkVelocity=True)
         globalJointAxis = np.array(p.rotateVector(linkWorldOrn, np.array(jointAxis) * desiredJointAcceleration[i]))
         parentJointAxis = np.array(p.rotateVector(parentWorldOrn, parentJointAxis))
         parentFramePos = np.array(p.rotateVector(parentWorldOrn, parentFramePos))
+        linkInertiaPos = np.array(p.rotateVector(linkWorldOrn, linkInertiaPos))
         # consisting of acceleration force and centrifugal force
-        linearAcceleration[1+i] = linearAcceleration[1+parentIndex] + (desiredJointAcceleration[parentIndex] if parentIndex != -1 else 0) * np.cross(parentJointAxis, parentFramePos) - np.dot(parentAngularVel, parentAngularVel) * np.array(parentFramePos)
+        linearAcceleration[1+i] = linearAcceleration[1+parentIndex] + (desiredJointAcceleration[parentIndex] if parentIndex != -1 else 0) * np.cross(parentJointAxis, parentFramePos) + np.cross(np.cross(parentFramePos, parentAngularVel), parentAngularVel)
         angularAcceleration[1+i] = angularAcceleration[1+parentIndex] + globalJointAxis
         totalMass += mass
+        centerOfMass += mass * np.array(linkInertiaPos + linkWorldPos)
+
+    centerOfMass /= totalMass
+    # Choose wrists and root acc
+    (atlasWorldPos, atlasWorldOrn) = p.getBasePositionAndOrientation(atlas)
+    positionError = np.array([0.00, 0, 1.3]) - centerOfMass
+    print(positionError)
+    wristsPower = 1.0 + positionError[2] * 1.0
+    wristsMoments = -np.array((-positionError[1], positionError[0], 0)) * 300
 
     forces = np.zeros((31, 3))
     moments = np.zeros((31, 3))
@@ -120,17 +134,23 @@ while (1):
             (parentWorldPos, parentWorldOrn) = p.getBasePositionAndOrientation(atlas)
             (_, parentAngularVel) = p.getBaseVelocity(atlas)
         (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
-        (linkWorldPos, linkWorldOrn, _, _, _, _) = p.getLinkState(atlas, i)
+        (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _, _, linkAngularVelocity) = p.getLinkState(atlas, i, computeLinkVelocity=True)
         globalJointAxis = np.array(p.rotateVector(linkWorldOrn, jointAxis))
         parentFramePos = np.array(p.rotateVector(parentWorldOrn, parentFramePos))
-        forces[1+i] += mass * (linearAcceleration[i] + np.array([0, 0, 9.81]))
-        if i == parameterNames.index("r_leg_akx") or i == parameterNames.index("l_leg_akx"):
-            forces[1+i, 2] -= 9.81 * totalMass / 2
+        local_inertia_pos = np.array(p.rotateVector(linkWorldOrn, local_inertia_pos))
+        forces[1+i] += mass * (linearAcceleration[i] + np.array([0, 0, 9.81])) + mass * np.cross(np.cross(local_inertia_pos, linkAngularVelocity), linkAngularVelocity) + mass * np.cross(local_inertia_pos, angularAcceleration[i])
+        moments[1+i] += np.cross(local_inertia_pos, forces[1+i])
+        if i == parameterNames.index("r_leg_akx"):
+            forces[1+i, 2] -= 9.81 * totalMass / 2 * wristsPower * (1 - positionError[1] * 0.2)
+            moments[1+i] += wristsMoments
+        if i == parameterNames.index("l_leg_akx"):
+            forces[1+i, 2] -= 9.81 * totalMass / 2 * wristsPower * (1 + positionError[1] * 0.2)
+            moments[1+i] += wristsMoments
             # TODO: Add moment here depending on center of pressure
         forces[1+parentIndex] += forces[1+i]
-        moments[1+i] += np.diag(p.rotateVector(linkWorldOrn, local_inertia_diagonal)) @ angularAcceleration[i]
+        moments[1+i] += np.diag(p.rotateVector(linkInertiaOrn, local_inertia_diagonal)) @ angularAcceleration[i]
         moments[1+parentIndex] += moments[1+i] + np.cross(parentFramePos, forces[1+i])
-        torques[i] = np.dot(np.cross(forces[1+i], globalJointAxis), globalJointAxis) + np.dot(moments[1+i], globalJointAxis)
+        torques[i] = np.dot(moments[1+i], globalJointAxis) # np.dot(np.cross(forces[1+i], globalJointAxis), globalJointAxis)
     # print("linearAcceleration")
     # print(linearAcceleration)
     # print("angularAcceleration")
@@ -143,7 +163,7 @@ while (1):
     # print(moments)
     # print("torques")
     # print(torques)
-    # print("Leftover force and moment:", forces[0], moments[0], "total:", totalMass)
+    print("Leftover force and moment:", forces[0], moments[0], "total:", totalMass)
     # print(torques)
     # break
     # 2. Step: Calculate all torques according to the pricinple of virtual work
@@ -167,7 +187,7 @@ while (1):
     # momentum = torques[3:6]
     # jointForces = torques[6:]
 
-    print(t, len(torques), torques.max())
+    # print(t, len(torques), torques.max())
     p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
     # for _ in range(5):
     #     p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=torques[6:] * 1.0)#, forces=[10000] * 30) #, positionGain=0, velocityGain=0)
