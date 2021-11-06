@@ -25,6 +25,11 @@ This project aims to run reinforcement learning models on a real Atlas.
 - [ ] Set friction on ground plane to a higher value
 - [ ] Add low pass filtering to joint motors. Low pass filter on the actual angles instead of the normalized action space
 - [ ] See how the model behaves and decide on further steps.
+- [ ] Use IK to better match reference motion
+- [ ] Use reward for relative end effector difference
+- [ ] Use motion from real atlas as reference
+- [ ] Debug without ground plane and figure out why the simulations still diverge
+- [ ] Sample from uniform instead of normal distribution
 
 ## Setup
 

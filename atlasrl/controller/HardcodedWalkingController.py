@@ -71,6 +71,7 @@ while (1):
     jac_t_1, jac_r_1 = p.calculateJacobian(atlas, i_leg_akx, foot_loc, qJoints.tolist(), (qDotJoints * 0.0).tolist(), zero_vec)
     # torques += np.array([0, 0, -200]) @ jac_t
     # torques += linearForce / 2 @ jac_t #+ momentum / 2 @ jac_r
+    p.resetJointState(atlas, 2, 1, 1)
 
     i_leg_akx = 28
     foot_loc = p.getLinkState(atlas, i_leg_akx)[0]
@@ -86,23 +87,56 @@ while (1):
     # torques = np.array(p.calculateInverseDynamics(atlas, q.tolist(), qDot.tolist(), desiredQDotDot.tolist()))
 
     # Solve inverse dynamics problem
-    # Step 0: Get center of mass
+    # Matrix A (...)
+    
+    # Step 0: Get center of mass and matrix A
     totalMass = 0
     centerOfMass = np.zeros(3)
-    totalInertia = np.zeros((3, 3))
-    for i in range(30):
+    # totalInertia = np.zeros((3, 3))
+    linkTotalMass = np.zeros(31)
+    linkCenterOfMass = np.zeros((31, 3))
+    # linkInertia = np.zeros((31, 3, 3))
+    J = np.zeros((31, 31, 6))
+    JDot = np.zeros((31, 6))
+    I = np.zeros((31, 6, 6))
+    A = np.zeros((31, 6))
+    ADot = np.zeros((31, 6))
+    for i in reversed(range(30)):
+        (_, _, _, _, _, flags, damping, friction, _, _, _, _, linkName, jointAxis, parentFramePos, parentFrameOrn, parentIndex) = p.getJointInfo(atlas, i)
         (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
         (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _, _, linkAngularVelocity) = p.getLinkState(atlas, i, computeLinkVelocity=True)
-        linkInertiaPos = np.array(p.rotateVector(linkWorldOrn, linkInertiaPos))
-        centerOfMass += mass * np.array(linkInertiaPos + linkWorldPos)
+        if parentIndex != -1:
+            (parentWorldPos, parentWorldOrn, _, _, _, _, _, _) = p.getLinkState(atlas, parentIndex, computeLinkVelocity=True)
+        else:
+            (parentWorldPos, parentWorldOrn) = p.getBasePositionAndOrientation(atlas)
+        linkInertiaPos = np.array(p.rotateVector(linkWorldOrn, linkInertiaPos)) + linkWorldPos
+        centerOfMass += mass * linkInertiaPos
         totalMass += mass
+        linkTotalMass[1+i] += mass
+        linkCenterOfMass[1+i] += mass * linkInertiaPos
+        linkCOM = linkCenterOfMass[1+i] / linkTotalMass[1+i]
+        # linkInertia[1+i] += np.diag(p.rotateVector(linkWorldOrn, p.rotateVector(linkInertiaOrn, local_inertia_diagonal)))
+        linkTotalMass[1+parentIndex] += linkTotalMass[1+i]
+        linkCenterOfMass[1+parentIndex] += linkCenterOfMass[1+i]
+        # linkInertia[1+parentIndex] += linkInertia[1+i] + skew(linkCOM - parentFramePos) @ skew(linkCOM - parentFramePos) * linkTotalMass[1+i]
+    linkCenterOfMass /= linkTotalMass[:, None]
     centerOfMass /= totalMass
-    for i in range(30):
+    print(centerOfMass, linkCenterOfMass[0], totalMass, linkTotalMass[0])
+    for i in reversed(range(30)):
+        (_, _, _, _, _, flags, damping, friction, _, _, _, _, linkName, jointAxis, parentFramePos, parentFrameOrn, parentIndex) = p.getJointInfo(atlas, i)
         (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
-        (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _, _, linkAngularVelocity) = p.getLinkState(atlas, i, computeLinkVelocity=True)
-        linkInertiaPos = np.array(p.rotateVector(linkWorldOrn, linkInertiaPos))
-        totalInertia += skew(linkInertiaPos - centerOfMass) * mass
-        totalInertia += np.diag(p.rotateVector(linkWorldOrn, p.rotateVector(linkInertiaOrn, local_inertia_diagonal)))
+        (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _, linkLinearVelocity, linkAngularVelocity) = p.getLinkState(atlas, i, computeLinkVelocity=True)
+        jointAxis = np.array(p.rotateVector(linkWorldOrn, np.array(jointAxis)))
+        linkInertiaPos = np.array(p.rotateVector(linkWorldOrn, linkInertiaPos)) + linkWorldPos
+        # totalInertia += skew(linkInertiaPos - centerOfMass) * mass
+        # totalInertia += np.diag(p.rotateVector(linkWorldOrn, p.rotateVector(linkInertiaOrn, local_inertia_diagonal)))
+        A[1+i, 0:3] += np.cross(jointAxis, linkInertiaPos - centerOfMass) * mass
+        A[1+i, 3:6] += np.cross(linkInertiaPos - centerOfMass, np.cross(jointAxis, linkInertiaPos - centerOfMass)) * mass + np.diag(p.rotateVector(linkWorldOrn, p.rotateVector(linkInertiaOrn, local_inertia_diagonal))) @ jointAxis
+        jointAxisDot = np.cross(linkAngularVelocity, jointAxis)
+        LCDot = np.cross(linkInertiaPos - centerOfMass, jointAxis)
+        ADot[1+i, 0:3] += np.cross(jointAxisDot, linkInertiaPos - centerOfMass) * mass + np.cross(jointAxis, LCDot) * mass
+        ADot[1+i, 3:6] += np.cross(linkInertiaPos - centerOfMass, np.cross(jointAxisDot, linkInertiaPos - centerOfMass)) * mass + np.diag(p.rotateVector(linkWorldOrn, p.rotateVector(linkInertiaOrn, local_inertia_diagonal))) @ jointAxisDot
+    break
     # Calculate Wrists
     (atlasWorldPos, atlasWorldOrn) = p.getBasePositionAndOrientation(atlas)
     (atlasWorldSpeed, atlasAngularSpeed) = p.getBaseVelocity(atlas)
@@ -120,11 +154,12 @@ while (1):
     wristLeftLoc = p.getLinkState(atlas, parameterNames.index("l_leg_akx"))[0]
     wristRightLoc = p.getLinkState(atlas, parameterNames.index("r_leg_akx"))[0]
     comBaseJointOffset = atlasWorldPos - centerOfMass
-    linearAcceleration[0] = (-np.array([0, 0, 9.81 * totalMass]) + wristRight + wristLeft) / totalMass
-    # angularAcceleration[0] = np.linalg.inv(totalInertia) @ (np.cross(wristLeftLoc - centerOfMass, wristLeft) + np.cross(wristRightLoc - centerOfMass, wristRight) + 2 * wristsMoments)
-    linearAcceleration[0] += np.cross(angularAcceleration[0], comBaseJointOffset)
+    desiredJointAcceleration = np.random.random(30)
+    hDot = A @ desiredJointAcceleration + ADot @ qDotJoints
+    linearAcceleration[0] = (-np.array([0, 0, 9.81 * totalMass]) + wristRight + wristLeft) / totalMass + hDot[0:3]
+    angularAcceleration[0] = np.linalg.inv(totalInertia) @ (np.cross(wristLeftLoc - centerOfMass, wristLeft) + np.cross(wristRightLoc - centerOfMass, wristRight) + 2 * wristsMoments)
+    # linearAcceleration[0] += np.cross(angularAcceleration[0], comBaseJointOffset)
     print(linearAcceleration[0], angularAcceleration[0])
-    desiredJointAcceleration = np.zeros(30)
     k_p = 0.
     k_d = k_p * 0.03
     desiredJointAcceleration = - k_p * (qJoints - qDesired) - k_d * qDotJoints
@@ -147,7 +182,7 @@ while (1):
         linearAcceleration[1+i] = linearAcceleration[1+parentIndex] + (desiredJointAcceleration[parentIndex] if parentIndex != -1 else 0) * np.cross(parentJointAxis, parentFramePos) + np.cross(np.cross(parentFramePos, parentAngularVel), parentAngularVel)
         angularAcceleration[1+i] = angularAcceleration[1+parentIndex] + globalJointAxis
 
-    # Choose wrists and root acc
+    # Calculate required joint torques
     forces = np.zeros((31, 3))
     moments = np.zeros((31, 3))
     torques = np.zeros(30)
@@ -173,7 +208,6 @@ while (1):
         if i == parameterNames.index("l_leg_akx"):
             forces[1+i] -= wristLeft
             moments[1+i] += wristsMoments
-            # TODO: Add moment here depending on center of pressure
         forces[1+parentIndex] += forces[1+i]
         moments[1+i] += np.diag(p.rotateVector(linkWorldOrn, p.rotateVector(linkInertiaOrn, local_inertia_diagonal))) @ angularAcceleration[i]
         moments[1+parentIndex] += moments[1+i] + np.cross(parentFramePos, forces[1+i])
@@ -191,7 +225,6 @@ while (1):
     # print("torques")
     # print(torques)
     print("Leftover force and moment:", forces[0], moments[0], "total:", totalMass)
-    break
     # print(torques)
     # break
     # 2. Step: Calculate all torques according to the pricinple of virtual work
