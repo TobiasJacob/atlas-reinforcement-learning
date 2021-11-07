@@ -4,6 +4,9 @@ import pybullet as p
 import pybullet_data
 import time,math
 from atlasrl.robots.Constants import parameterNames
+from scipy.optimize import linprog
+from cvxopt import matrix, solvers
+solvers.options['show_progress'] = False # Prevent printing
 
 path = "data/atlas/atlas_v4_with_multisense.urdf"
 
@@ -29,8 +32,8 @@ def skew(x):
                      [x[2], 0, -x[0]],
                      [-x[1], x[0], 0]])
 
+p.resetJointState(atlas, 1, 0.1, 0)
 while (1):
-    # p.resetJointState(atlas, 2, 2, 0)
     (basePose, baseOrn) = p.getBasePositionAndOrientation(atlas)
     (baseLinearSpeed, baseOrnSpeed) = p.getBaseVelocity(atlas)
     jointStates = p.getJointStates(atlas, np.arange(30))
@@ -46,9 +49,17 @@ while (1):
     zeroVec30 = [0.] * 30
     zeroVec36 = [0.] * 36
 
-    posDelta = np.array([-0.05, 0, 0.6]) - np.array(basePose)
-    qDotDot = np.concatenate([(0, 0, 0), posDelta * 10 - 5 * np.array(baseLinearSpeed), -qJoints * 2 - qDotJoints])
+    posDelta = np.array([-0.00, 0, 0.90]) - np.array(basePose)
+    posDelta *= np.array([1, 1, 0])
+    # print(posDelta)
+    eulerAngles = np.array(p.getEulerFromQuaternion(baseOrn))
+    qDotDot = np.concatenate([-eulerAngles - 0.1 * np.array(baseOrnSpeed), posDelta * 1 - 0.1 * np.array(baseLinearSpeed), -qJoints * 2 - 0.1 * qDotJoints])
+    # qDotDot = np.concatenate([(0, 0, 0), posDelta * 1, -qJoints * 0])
+    # print("q", q)
+    # print("qDot", qDot)
+    # print(qDotDot)
     qDotDot = qDotDot.clip(-1, 1)
+    # print(qDotDot)
     qDotDot = np.zeros_like(qDotDot)
     # qDotDot[6+parameterNames.index("l_arm_shx")] += 4
 
@@ -92,50 +103,108 @@ while (1):
     # Calculating forces
     # (30, 6) = (30, 6, 6) @ (30, 6, 36) @ (36) + (30, 6, 6) @ (30, 6, 36) @ (36) + (30, 6) * (30, 6, 36) @ (36)
     vDot = jacobian @ qDotDot + jacobianDot @ qDot # (30, 6)
-    inertiaForces = -(I @ vDot[:, :, None])[:, :, 0] # (30, 6)
-    centroidalMomentum = inertiaForces.sum(0) # (6,)
+    # print("qDot")
+    # print(qDot)
+    # print("vDot")
+    # print(vDot)
     rootJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
+    inertiaForces = -(I @ vDot[:, :, None])[:, :, 0] # (30, 6)
+    centroidalMomentum = (inertiaForces[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
+    # print(centroidalMomentum)
     gravityMoment = (FGrav[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
 
     # Calculating Wrists
     iLeft = parameterNames.index("r_leg_akx")
     iRight = parameterNames.index("l_leg_akx")
-    (leftWorldPos, leftWorldOrn, leftPos, _, _, _,) = p.getLinkState(atlas, iLeft)
-    (rightWorldPos, rightWorldOrn, rightPos, _, _, _,) = p.getLinkState(atlas, iRight)
-    leftPos = np.array(p.rotateVector(leftWorldOrn, leftPos)) + leftWorldPos
-    rightPos = np.array(p.rotateVector(rightWorldOrn, rightPos)) + rightWorldPos
-    MomentDirection = (leftPos - rightPos) / np.linalg.norm(leftPos - rightPos)
-    leftJacobian = jacobian[iLeft, :, :6] # (6, 6)
-    rightJacobian = jacobian[iRight, :, :6] # (6, 6)
-    # WA = np.concatenate((leftJacobian, rightJacobian), axis=1)
-    
-    WA = np.zeros((6, 7))
-    # 1 Condition: F1 + F2 = Fges
-    WA[3:6, 0:3] = np.eye(3)
-    WA[3:6, 3:6] = np.eye(3)
-    # 2 Condition: 2 * Alpha * (R1 - R2) + R1 x F1 + R2 x F2 = Mges
-    WA[0:3, 0:3] = skew(leftPos - basePose)
-    WA[0:3, 3:6] = skew(rightPos - basePose)
-    WA[0:3, 6] = 2 * MomentDirection
-    Wb = -gravityMoment - centroidalMomentum
-    wrists = np.linalg.lstsq(WA, Wb, rcond=1)[0]
-    wristLeft = np.concatenate((wrists[6] * MomentDirection, wrists[0:3]))
-    wristRight = np.concatenate((wrists[6] * MomentDirection, wrists[3:6]))
+    # (leftWorldPos, leftWorldOrn, leftPos, _, _, _,) = p.getLinkState(atlas, iLeft)
+    # (rightWorldPos, rightWorldOrn, rightPos, _, _, _,) = p.getLinkState(atlas, iRight)
+    # leftPos = np.array(p.rotateVector(leftWorldOrn, leftPos)) + leftWorldPos
+    # rightPos = np.array(p.rotateVector(rightWorldOrn, rightPos)) + rightWorldPos
+    # MomentDirection = (leftPos - rightPos) / np.linalg.norm(leftPos - rightPos)
+    leftJacobian = rootJacobian[iLeft] # (6, 6)
+    rightJacobian = rootJacobian[iRight] # (6, 6)
+    WA = np.concatenate((leftJacobian, rightJacobian), axis=0).transpose() # (6, 12)
+    Wb = -gravityMoment - centroidalMomentum # (6,)
+    # print(gravityMoment)
+    # print(centroidalMomentum)
+    # Constrain M_z = 0
+    WA = np.concatenate((WA, np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]]), np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]])), axis=0)
+    Wb = np.concatenate((Wb, [0, 0]))
+    # Inequality constraints
+    mu = 0.3
+    lBack = 0.2
+    l = 0.2
+    BA = np.array(([
+        [0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0], # -F_z < 0
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1], # -F_z < 0
+        [0, 0, 0, -1, 0, -mu, 0, 0, 0, 0, 0, 0], # -mu F_z < F_x
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -mu], # -mu F_z < F_x
+        [0, 0, 0, 0, -1, -mu, 0, 0, 0, 0, 0, 0], # -mu F_z < F_y
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -mu], # -mu F_z < F_y
+        [0, 0, 0, 1, 0, -mu, 0, 0, 0, 0, 0, 0], # F_x < mu F_z
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, -mu], # F_x < mu F_z
+        [0, 0, 0, 0, 1, -mu, 0, 0, 0, 0, 0, 0], # F_y < mu F_z
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, -mu], # F_y < mu F_z
+        [-1, 0, 0, 0, 0, -l, 0, 0, 0, 0, 0, 0], # -F_z * l < M_x
+        [0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, -l], # -F_z * l < M_x
+        [0, -1, 0, 0, 0, -lBack, 0, 0, 0, 0, 0, 0], # -F_z * l < M_y
+        [0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, -lBack], # -F_z * l < M_y
+        [1, 0, 0, 0, 0, -l, 0, 0, 0, 0, 0, 0], # M_x < F_z * l
+        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, -l], # M_x < F_z * l
+        [0, 1, 0, 0, 0, -lBack, 0, 0, 0, 0, 0, 0], # M_y < F_z * l
+        [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, -lBack], # M_y < F_z * l
+    ]))
+    Bb = np.zeros(BA.shape[0])
+    # wrists = np.linalg.lstsq(WA, Wb, rcond=1)[0]
+    weightMoment = 1
+    weightForce = 0.001
+    cost = np.array([weightMoment, weightMoment, weightMoment, weightForce, weightForce, weightForce, weightMoment, weightMoment, weightMoment, weightForce, weightForce, weightForce]) # Minimize the moments
+    # res = linprog(cost, A_eq=WA, b_eq=Wb, A_ub=BA, b_ub=Bb, bounds=(None, None), method="highs-ipm")
+    res = solvers.qp(matrix(np.diag(cost)), matrix(np.zeros_like(cost)), matrix(BA), matrix(Bb), matrix(WA), matrix(Wb))
+    if res["status"] == "optimal":
+        wrists = np.array(res["x"])[:, 0]
+    else:
+        # print(res)
+        print("Infeasible")
+        pass
+    # wrists = np.array(res["x"])[:, 0]
+    # wrists[0:5] *= 1.0
+    # wrists[6:11] *= 1.0
+    # break
     Fwrists = np.zeros((30, 6))
-    Fwrists[iLeft] = wristLeft
-    Fwrists[iRight] = wristRight
+    Fwrists[iLeft] = wrists[:6]
+    Fwrists[iRight] = wrists[6:]
+    # print(wrists @ WA.transpose() - Wb)
+    # wrists @ WA.transpose() - Wb = 0
+    # FWrists @ rootJacobian + gravityMoment + centroidalMomentum = 0
+    # FWrists @ rootJacobian + FGrav @ rootJacobian + inertiaForces @ rootJacobian = 0
+    # print("vdot", np.linalg.norm(vDot, axis=1))
+    # print(centroidalMomentum)
+    # print(gravityMoment)
+    # print(wrists)
+    # break
 
     # Calculating joint torques
     totalForce = inertiaForces + FGrav + Fwrists # (30, 6)
+    # print(totalForce)
     jointTorques = np.zeros(30)
     for i in range(-1, 30):
         if i == -1:
             jointJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
-            print(-(totalForce[:, None, :] @ jointJacobian))
+            # print(-(totalForce[:, None, :] @ jointJacobian).sum(0))
         else:
             jointJacobian = jacobian[:, :, 6+i:7+i]  # (30, 6, 1)
             # (30, 1, 6) * (30, 6, 1)
             jointTorques[i] = -(totalForce[:, None, :] @ jointJacobian).sum()
+    # jointTorques[parameterNames.index("l_leg_aky")] = 0
+    # jointTorques[parameterNames.index("l_leg_akx")] = 0
+    # jointTorques[parameterNames.index("r_leg_aky")] = 0
+    # jointTorques[parameterNames.index("r_leg_akx")] = 0
+    # print(np.round(jointTorques))
+    # if jointTorques[-2] < 0:
+    #     # print(jacobianDot[0])
+    #     # print(qDot)
+    #     break
     while True:
         p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=jointTorques)
         p.stepSimulation()
