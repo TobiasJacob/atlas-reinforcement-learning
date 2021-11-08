@@ -32,13 +32,19 @@ def skew(x):
                      [x[2], 0, -x[0]],
                      [-x[1], x[0], 0]])
 
+def moveTowards(currentPoint: np.ndarray, targetPoint: np.ndarray, speed=1) -> np.ndarray:
+    delta = targetPoint - currentPoint
+    dist = np.linalg.norm(delta)
+    stepSize = min(dist, speed * dt)
+    return currentPoint + delta / dist * stepSize
+
 for j in range(-1, 30):
     p.changeDynamics(atlas, j, linearDamping=0, angularDamping=0, jointDamping=0, restitution=1)
 
 p.resetJointState(atlas, 1, 0.0, 0)
 # p.resetJointState(atlas, 26, -1.0, 0) # Right foot in the air
 # p.resetJointState(atlas, 27, 2.0, 0)
-state = "b->r"
+state = "init"
 while (1):
     # Sensor readings
     (basePose, baseOrn) = p.getBasePositionAndOrientation(atlas)
@@ -59,29 +65,30 @@ while (1):
     zeroVec36 = [0.] * 36
 
     # Calculate jacobian
-    jacobian = np.zeros((30, 6, 36))
-    for i in range(30):
-        (_, _, _, _, _, _, _, _, _, _, _, _, _, jointAxis, _, _, _) = p.getJointInfo(atlas, i)
-        (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _,) = p.getLinkState(atlas, i)
-        jac_t, jac_r = p.calculateJacobian(atlas, i, linkInertiaPos, qJoints.tolist(), zeroVec30, zeroVec30)
+    jacobian = np.zeros((31, 6, 36))
+    for i in range(-1, 30):
+        (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
+        jac_t, jac_r = p.calculateJacobian(atlas, i, local_inertia_pos, qJoints.tolist(), zeroVec30, zeroVec30)
         jac_t = np.array(jac_t)
         jac_r = np.array(jac_r)
         for j in range(jac_t.shape[1]):
             jac_t[:, j] = p.rotateVector(baseOrn, jac_t[:, j].tolist())
             jac_r[:, j] = p.rotateVector(baseOrn, jac_r[:, j].tolist())
-        jacobian[i, :3] = jac_r
-        jacobian[i, 3:] = jac_t
-
+        jacobian[1+i, :3] = jac_r
+        jacobian[1+i, 3:] = jac_t
     # Calculating inertia and mass matrix and gravity matrix
-    I = np.zeros((30, 6, 6))
-    FGrav = np.zeros((30, 6))
-    for i in range(30):
-        (_, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _,) = p.getLinkState(atlas, i)
+    I = np.zeros((31, 6, 6))
+    FGrav = np.zeros((31, 6))
+    for i in range(-1, 30):
+        if i == -1:
+            linkWorldOrn = baseOrn
+        else:
+            (_, linkWorldOrn, _, _, _, _,) = p.getLinkState(atlas, i)
         (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
         R = np.array(p.getMatrixFromQuaternion(linkWorldOrn)).reshape(3, 3) @ np.array(p.getMatrixFromQuaternion(local_inertia_orn)).reshape(3, 3)
-        I[i, 0:3, 0:3] = R @ np.diag(local_inertia_diagonal) @ np.linalg.inv(R)
-        I[i, 3:6, 3:6] = np.eye(3) * mass
-        FGrav[i, 5] = -9.81 * mass
+        I[1+i, 0:3, 0:3] = R @ np.diag(local_inertia_diagonal) @ np.linalg.inv(R)
+        I[1+i, 3:6, 3:6] = np.eye(3) * mass
+        FGrav[1+i, 5] = -9.81 * mass
 
     # Center of mass
     rootJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
@@ -94,40 +101,67 @@ while (1):
     # Foot state machine (l, b, or r)
     (leftFootWorldPos, leftFootWorldOrn, _, _, _, _, leftFootLinearVelocity, leftFootAngularVelocity) = p.getLinkState(atlas, iLeft, computeLinkVelocity=True)
     (rightFootWorldPos, rightFootWorldOrn, _, _, _, _, rightFootLinearVelocity, rightFootAngularVelocity) = p.getLinkState(atlas, iRight, computeLinkVelocity=True)
-    if state == "b->r":
-        targetCOM = rightFootWorldPos + np.array([0, 0, 1.2])
+    comHeight = 1.1
+    if state == "init":
+        targetCOM = (np.array(rightFootWorldPos) + leftFootWorldPos) / 2 + np.array([0, 0, comHeight])
         currentFoot = "b"
-        if np.linalg.norm((targetCOM - centerOfMass)[0:2]) < 0.07:
+        if t > 5:
+            state = "b->l"
+            print(state)
+    elif state == "b->r":
+        targetCOM = moveTowards(targetCOM, rightFootWorldPos + np.array([0, 0, comHeight]), speed=0.1)
+        currentFoot = "b"
+        if np.linalg.norm((rightFootWorldPos + np.array([0, 0, comHeight]) - centerOfMass)[0:2]) < 0.03:
+            targetFootPos = np.array(leftFootWorldPos)
             state = "r"
+            targetTargetFootPos = np.array([0.0, 0.0, 0.2]) + leftFootWorldPos
             print(state)
     elif state == "r":
-        targetCOM = rightFootWorldPos + np.array([0, 0, 1.2])
+        targetFootPos = moveTowards(targetFootPos, targetTargetFootPos, speed=0.3)
         currentFoot = "r"
-        targetFootPos = np.array([0.0, 0.2, 0.3]) + leftFootWorldPos
-        if np.linalg.norm((targetCOM - centerOfMass)[2]) > 0.07:
+        if np.linalg.norm(leftFootWorldPos[2]) > 0.07:
             state = "rForward"
             print(state)
     elif state == "rForward":
-        targetCOM = rightFootWorldPos + np.array([0, 0, 1.2])
+        targetFootPos = moveTowards(targetFootPos, np.array([0.2, 0.2, 0.2]) + rightFootWorldPos, speed=0.3)
         currentFoot = "r"
-        targetFootPos = np.array([0.2, 0.2, 0.3]) + rightFootWorldPos
-        if np.linalg.norm((targetFootPos - leftFootWorldPos)[0:2]) < 0.03:
+        if np.linalg.norm((np.array([0.2, 0.2, 0.2]) + rightFootWorldPos - leftFootWorldPos)) < 0.03:
             state = "rDown"
             print(state)
     elif state == "rDown":
-        targetCOM = rightFootWorldPos + np.array([0.1, 0.1, 1.2])
+        targetFootPos = moveTowards(targetFootPos, np.array([0.2, 0.2, 0.0]) + rightFootWorldPos, speed=0.3)
+        targetCOM = moveTowards(targetCOM, rightFootWorldPos + np.array([0.1, 0.1, comHeight]), speed=0.1)
         currentFoot = "r"
-        targetFootPos += np.array([0.05, 0.05, -0.2]) * dt
-        if leftFootWorldPos[2] < 0.01:
+        if leftFootWorldPos[2] < 0.01 + rightFootWorldPos[2]:
             state = "b->l"
             print(state)
     elif state == "b->l":
-        delta = leftFootWorldPos + np.array([0, 0, 1.2]) - targetCOM
-        targetCOM += delta / np.linalg.norm(delta) * dt * 1.0
+        targetCOM = moveTowards(targetCOM, leftFootWorldPos + np.array([0.0, 0.0, comHeight]), speed=0.1)
         currentFoot = "b"
-        # if np.linalg.norm((targetCOM - centerOfMass)[0:2]) < 0.07:
-        #     state = "r"
-        #     print(state)
+        if np.linalg.norm((leftFootWorldPos + np.array([0, 0, comHeight]) - centerOfMass)[0:2]) < 0.03:
+            targetFootPos = np.array(rightFootWorldPos)
+            targetTargetFootPos = np.array([0.0, 0.0, 0.2]) + rightFootWorldPos
+            state = "l"
+            print(state)
+    elif state == "l":
+        targetFootPos = moveTowards(targetFootPos, targetTargetFootPos, speed=0.3)
+        currentFoot = "l"
+        if np.linalg.norm(rightFootWorldPos[2]) > 0.07:
+            state = "lForward"
+            print(state)
+    elif state == "lForward":
+        targetFootPos = moveTowards(targetFootPos, np.array([0.2, -0.2, 0.2]) + leftFootWorldPos, speed=0.3)
+        currentFoot = "l"
+        if np.linalg.norm((np.array([0.2, -0.2, 0.2]) + leftFootWorldPos - rightFootWorldPos)) < 0.03:
+            state = "lDown"
+            print(state)
+    elif state == "lDown":
+        targetFootPos = moveTowards(targetFootPos, np.array([0.2, -0.2, 0.0]) + leftFootWorldPos, speed=0.3)
+        targetCOM = moveTowards(targetCOM, leftFootWorldPos + np.array([0.1, -0.1, comHeight]), speed=0.1)
+        currentFoot = "l"
+        if rightFootWorldPos[2] < 0.01 + leftFootWorldPos[2]:
+            state = "b->r"
+            print(state)
     else:
         print(state)
         raise NotImplementedError()
@@ -135,20 +169,20 @@ while (1):
     # Kinematic manager
     qDotDotLeftFoot = np.zeros(6)
     qDotDotRightFoot = np.zeros(6)
+    kp = 10
+    kd = 2
     if currentFoot == "r":
-        qDotDotLeftFoot[0:3] = -10 * np.array(p.getEulerFromQuaternion(leftFootWorldOrn)) - 1 * np.array(leftFootAngularVelocity)
-        qDotDotLeftFoot[3:6] = 5 * (targetFootPos - np.array(leftFootWorldPos)) - 1 * np.array(leftFootLinearVelocity)
+        qDotDotLeftFoot[0:3] = -kp * np.array(p.getEulerFromQuaternion(leftFootWorldOrn)) - kd * np.array(leftFootAngularVelocity)
+        qDotDotLeftFoot[3:6] = kp * (targetFootPos - np.array(leftFootWorldPos)) - kd * np.array(leftFootLinearVelocity)
     elif currentFoot == "l":
-        qDotDotRightFoot[0:3] = -10 * np.array(p.getEulerFromQuaternion(rightFootWorldOrn)) - 1 * np.array(rightFootAngularVelocity)
-        qDotDotRightFoot[3:6] = 5 * (targetFootPos - np.array(rightFootWorldPos)) - 1 * np.array(rightFootLinearVelocity)
-    posDelta = np.array([1, 1, 5]) * (targetCOM - centerOfMass)
-    eulerAngles = np.array(p.getEulerFromQuaternion(baseOrn))
-    qDotDotRootJoint = np.concatenate([-10 * eulerAngles - 2 * np.array(baseOrnSpeed), posDelta - 2 * np.array(baseLinearSpeed)])
+        qDotDotRightFoot[0:3] = -kp * np.array(p.getEulerFromQuaternion(rightFootWorldOrn)) - kd * np.array(rightFootAngularVelocity)
+        qDotDotRightFoot[3:6] = kp * (targetFootPos - np.array(rightFootWorldPos)) - kd * np.array(rightFootLinearVelocity)
+    qDotDotRootJoint = np.concatenate([-kp * np.array(p.getEulerFromQuaternion(baseOrn)) - kd * np.array(baseOrnSpeed), kp * (targetCOM - centerOfMass) - kd * np.array(baseLinearSpeed)])
 
     # Solve kinematic constraints
-    qDotDotUpperBody = (-qJoints * 10 - 1.0 * qDotJoints)[0:18]
-    leftJacobian = jacobian[iLeft] # (6, 36)
-    rightJacobian = jacobian[iRight] # (6, 36)
+    qDotDotUpperBody = (-qJoints * kp - kd * qDotJoints)[0:18]
+    leftJacobian = jacobian[1+iLeft] # (6, 36)
+    rightJacobian = jacobian[1+iRight] # (6, 36)
     KA = np.concatenate((leftJacobian, rightJacobian), axis=0) # (12,36)
     Kb = np.concatenate((qDotDotLeftFoot, qDotDotRightFoot), axis=0) # (12,)
     KbRed = np.copy(Kb)
@@ -157,12 +191,12 @@ while (1):
     KARed = KA[:, 24:]
     qDotDotLegs = np.linalg.solve(KARed, KbRed)
     qDotDot = np.concatenate((qDotDotRootJoint, qDotDotUpperBody, qDotDotLegs))
-    qDotDot = qDotDot.clip(-10, 10)
+    # qDotDot = qDotDot.clip(-1, 1)
 
     # Calculate jacobian derivative
     v = jacobian @ qDot
     vAngular = v[:, :3] # (30, 3)
-    jacobianDot = np.zeros((30, 6, 36))
+    jacobianDot = np.zeros((31, 6, 36))
     for i in range(36):
         jacobianDot[:, 3:, i] = np.cross(vAngular, jacobian[:, 3:, i])
         jacobianDot[:, :3, i] = np.cross(vAngular, jacobian[:, :3, i]) # TODO: Verify if this is necessary
@@ -175,13 +209,13 @@ while (1):
     gravityMoment = (FGrav[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
 
     # Equality constraints for Wrists
-    leftJacobian = rootJacobian[iLeft] # (6, 6)
-    rightJacobian = rootJacobian[iRight] # (6, 6)
+    leftJacobian = rootJacobian[1+iLeft] # (6, 6)
+    rightJacobian = rootJacobian[1+iRight] # (6, 6)
     WA = np.concatenate((leftJacobian, rightJacobian), axis=0).transpose() # (6, 12)
     Wb = -gravityMoment - centroidalMomentum # (6,)
 
     # Inequality constraints for Wrists
-    Fwrists = np.zeros((30, 6))
+    Fwrists = np.zeros((31, 6))
     if currentFoot == "b":
         WA = np.concatenate((WA, np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]]), np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]])), axis=0)
         Wb = np.concatenate((Wb, [0, 0]))
@@ -211,8 +245,8 @@ while (1):
         weightMoment = 1
         weightForce = 0.001
         Bb = np.zeros(BA.shape[0])
-        Bb[0] = -500
-        Bb[9] = -500
+        Bb[0] = -100
+        Bb[9] = -100
         cost = np.array([weightMoment, weightMoment, weightMoment, weightForce, weightForce, weightForce, weightMoment, weightMoment, weightMoment, weightForce, weightForce, weightForce]) # Minimize the moments
         res = solvers.qp(matrix(np.diag(cost)), matrix(np.zeros_like(cost)), matrix(BA), matrix(Bb), matrix(WA), matrix(Wb))
         if res["status"] == "optimal":
@@ -221,14 +255,14 @@ while (1):
         else:
             print("Infeasible")
             pass
-        Fwrists[iLeft] = wrists[:6]
-        Fwrists[iRight] = wrists[6:]
+        Fwrists[1+iLeft] = wrists[:6]
+        Fwrists[1+iRight] = wrists[6:]
     elif currentFoot == "l":
         wrists = np.linalg.solve(WA[:, :6], Wb)
-        Fwrists[iLeft] = wrists
+        Fwrists[1+iLeft] = wrists
     elif currentFoot == "r":
         wrists = np.linalg.solve(WA[:, 6:], Wb)
-        Fwrists[iRight] = wrists
+        Fwrists[1+iRight] = wrists
     else:
         raise NotImplementedError()
     # wrists @ WA.transpose() - Wb = 0
@@ -249,7 +283,7 @@ while (1):
     while True:
         p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=jointTorques)
         p.stepSimulation()
-        time.sleep(dt * 4)
+        time.sleep(dt * 1)
         t += dt
         break
 
