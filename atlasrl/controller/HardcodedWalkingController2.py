@@ -32,7 +32,7 @@ def skew(x):
                      [x[2], 0, -x[0]],
                      [-x[1], x[0], 0]])
 
-p.resetJointState(atlas, 1, 0.1, 0)
+p.resetJointState(atlas, 1, 0.3, 0)
 while (1):
     (basePose, baseOrn) = p.getBasePositionAndOrientation(atlas)
     (baseLinearSpeed, baseOrnSpeed) = p.getBaseVelocity(atlas)
@@ -71,6 +71,11 @@ while (1):
         (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _,) = p.getLinkState(atlas, i)
         # axis[i] = p.rotateVector(linkWorldOrn, np.array(jointAxis))
         jac_t, jac_r = p.calculateJacobian(atlas, i, linkInertiaPos, qJoints.tolist(), zeroVec30, zeroVec30)
+        jac_t = np.array(jac_t)
+        jac_r = np.array(jac_r)
+        for j in range(jac_t.shape[1]):
+            jac_t[:, j] = p.rotateVector(baseOrn, jac_t[:, j].tolist())
+            jac_r[:, j] = p.rotateVector(baseOrn, jac_r[:, j].tolist())
         jacobian[i, :3] = jac_r
         jacobian[i, 3:] = jac_t
     # print("jacobian")
@@ -83,8 +88,9 @@ while (1):
     jacobianDot = np.zeros((30, 6, 36))
     for i in range(36):
         jacobianDot[:, 3:, i] = np.cross(vAngular, jacobian[:, 3:, i])
+        jacobianDot[:, :3, i] = np.cross(vAngular, jacobian[:, :3, i]) # TODO: Verify if this is necessary
     # print("jacobianDot")
-    # print(jacobianDot[0])
+    # print(jacobianDot)
 
     # Calculating inertia and mass matrix and gravity matrix
     I = np.zeros((30, 6, 6))
@@ -109,8 +115,8 @@ while (1):
     # print(vDot)
     rootJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
     inertiaForces = -(I @ vDot[:, :, None])[:, :, 0] # (30, 6)
+    # inertiaForces *= 0 # TODO: Add centroidal Momentum
     centroidalMomentum = (inertiaForces[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
-    # print(centroidalMomentum)
     gravityMoment = (FGrav[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
 
     # Calculating Wrists
@@ -125,9 +131,11 @@ while (1):
     rightJacobian = rootJacobian[iRight] # (6, 6)
     WA = np.concatenate((leftJacobian, rightJacobian), axis=0).transpose() # (6, 12)
     Wb = -gravityMoment - centroidalMomentum # (6,)
+    print("centroidalMomentum", centroidalMomentum)
     # print(gravityMoment)
     # print(centroidalMomentum)
     # Constrain M_z = 0
+    print("gravityMoment", gravityMoment)
     WA = np.concatenate((WA, np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]]), np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]])), axis=0)
     Wb = np.concatenate((Wb, [0, 0]))
     # Inequality constraints
@@ -191,7 +199,7 @@ while (1):
     for i in range(-1, 30):
         if i == -1:
             jointJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
-            # print(-(totalForce[:, None, :] @ jointJacobian).sum(0))
+            print(-(totalForce[:, None, :] @ jointJacobian).sum(0))
         else:
             jointJacobian = jacobian[:, :, 6+i:7+i]  # (30, 6, 1)
             # (30, 1, 6) * (30, 6, 1)
@@ -200,7 +208,7 @@ while (1):
     # jointTorques[parameterNames.index("l_leg_akx")] = 0
     # jointTorques[parameterNames.index("r_leg_aky")] = 0
     # jointTorques[parameterNames.index("r_leg_akx")] = 0
-    # print(np.round(jointTorques))
+    print(np.round(jointTorques))
     # if jointTorques[-2] < 0:
     #     # print(jacobianDot[0])
     #     # print(qDot)
@@ -208,7 +216,7 @@ while (1):
     while True:
         p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=jointTorques)
         p.stepSimulation()
-        time.sleep(dt * 10)
+        time.sleep(dt * 100)
         t += dt
         break
 
