@@ -15,7 +15,7 @@ p.setAdditionalSearchPath(pybullet_data.getDataPath())
 atlas = p.loadURDF(path, [0, 0, 0.95])
 
 p.setJointMotorControlArray(atlas, np.arange(30), p.VELOCITY_CONTROL, forces=np.zeros(30,))
-dt = 0.001
+dt = 0.01
 p.setTimeStep(dt)
 p.loadURDF("plane.urdf",[0,0,0], useFixedBase=True)
 
@@ -60,9 +60,9 @@ while (1):
     # print("qDot", qDot)
     # print(qDotDot)
     qDotDot = qDotDot.clip(-10, 10)
-    print(qDotDot)
+    # print(qDotDot)
     # qDotDot = np.zeros_like(qDotDot)
-    # qDotDot[6+parameterNames.index("l_arm_shx")] += 4
+    qDotDot[6+parameterNames.index("l_arm_shx")] += 4 * np.sin(t)
 
     # Calculate jacobian
     jacobian = np.zeros((30, 6, 36))
@@ -217,7 +217,7 @@ while (1):
     while True:
         p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=jointTorques)
         p.stepSimulation()
-        time.sleep(dt * 10)
+        time.sleep(dt * 0)
         t += dt
         break
 
