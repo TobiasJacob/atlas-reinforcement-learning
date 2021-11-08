@@ -1,4 +1,4 @@
-"""This is a standalone script to explort how the Atlas model looks like."""
+"""This is a standalone script to show how to implement a hard-coded walking controller."""
 import numpy as np
 import pybullet as p
 import pybullet_data
@@ -57,7 +57,6 @@ while (1):
     iRight = parameterNames.index("r_leg_akx")
 
     q = np.array(list(baseOrn) + list(basePose) + list(jointPositions))
-    
     qDot = np.array(list(baseOrnSpeed) + list(baseLinearSpeed) + list(jointSpeeds))
     qJoints = np.array(jointPositions)
     qDotJoints = np.array(jointSpeeds)
@@ -76,6 +75,7 @@ while (1):
             jac_r[:, j] = p.rotateVector(baseOrn, jac_r[:, j].tolist())
         jacobian[1+i, :3] = jac_r
         jacobian[1+i, 3:] = jac_t
+
     # Calculating inertia and mass matrix and gravity matrix
     I = np.zeros((31, 6, 6))
     FGrav = np.zeros((31, 6))
