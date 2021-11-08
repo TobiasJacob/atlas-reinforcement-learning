@@ -14,7 +14,7 @@ p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 atlas = p.loadURDF(path, [0, 0, 0.95])
 
-p.setJointMotorControlArray(atlas, np.arange(30), p.VELOCITY_CONTROL, forces=np.zeros(30,))
+p.setJointMotorControlArray(atlas, np.arange(30), p.POSITION_CONTROL, forces=np.zeros(30,))
 dt = 0.01
 p.setTimeStep(dt)
 p.loadURDF("plane.urdf",[0,0,0], useFixedBase=True)
@@ -31,6 +31,9 @@ def skew(x):
     return np.array([[0, -x[2], x[1]],
                      [x[2], 0, -x[0]],
                      [-x[1], x[0], 0]])
+
+for j in range(-1, 30):
+    p.changeDynamics(atlas, j, linearDamping=0, angularDamping=0, jointDamping=0, restitution=1)
 
 p.resetJointState(atlas, 1, 0.0, 0)
 while (1):
@@ -50,11 +53,14 @@ while (1):
     zeroVec30 = [0.] * 30
     zeroVec36 = [0.] * 36
 
+
+    # Solve kinematic constraints
+    qDotDot = np.concatenate([-10 * eulerAngles - 2 * np.array(baseOrnSpeed), posDelta - 2 * np.array(baseLinearSpeed), -qJoints * 10 - 1.0 * qDotJoints])
     posDelta = np.array([-0.00, 0, 0.90]) - np.array(basePose)
     posDelta *= np.array([10, 10, 5])
-    # print(posDelta)
     eulerAngles = np.array(p.getEulerFromQuaternion(baseOrn))
-    qDotDot = np.concatenate([-10 * eulerAngles - 2 * np.array(baseOrnSpeed), posDelta - 2 * np.array(baseLinearSpeed), -qJoints * 10 - 2 * qDotJoints])
+    # qJoints[6] -= min(0.2 * t, 1.2)
+    # print(qDotDot)
     # qDotDot = np.concatenate([(0, 0, 0), posDelta * 1, -qJoints * 0])
     # print("q", q)
     # print("qDot", qDot)
@@ -62,7 +68,7 @@ while (1):
     qDotDot = qDotDot.clip(-10, 10)
     # print(qDotDot)
     # qDotDot = np.zeros_like(qDotDot)
-    qDotDot[6+parameterNames.index("l_arm_shx")] += 4 * np.sin(t)
+    qDotDot[6+4] = -0.0 #2 * np.sin(t * 3)
 
     # Calculate jacobian
     jacobian = np.zeros((30, 6, 36))
