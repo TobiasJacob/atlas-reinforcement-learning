@@ -32,8 +32,9 @@ def skew(x):
                      [x[2], 0, -x[0]],
                      [-x[1], x[0], 0]])
 
-p.resetJointState(atlas, 1, 0.3, 0)
+p.resetJointState(atlas, 1, 0.0, 0)
 while (1):
+    print(t)
     (basePose, baseOrn) = p.getBasePositionAndOrientation(atlas)
     (baseLinearSpeed, baseOrnSpeed) = p.getBaseVelocity(atlas)
     jointStates = p.getJointStates(atlas, np.arange(30))
@@ -50,17 +51,17 @@ while (1):
     zeroVec36 = [0.] * 36
 
     posDelta = np.array([-0.00, 0, 0.90]) - np.array(basePose)
-    posDelta *= np.array([1, 1, 0])
+    posDelta *= np.array([10, 10, 5])
     # print(posDelta)
     eulerAngles = np.array(p.getEulerFromQuaternion(baseOrn))
-    qDotDot = np.concatenate([-eulerAngles - 0.1 * np.array(baseOrnSpeed), posDelta * 1 - 0.1 * np.array(baseLinearSpeed), -qJoints * 2 - 0.1 * qDotJoints])
+    qDotDot = np.concatenate([-10 * eulerAngles - 2 * np.array(baseOrnSpeed), posDelta - 2 * np.array(baseLinearSpeed), -qJoints * 10 - 2 * qDotJoints])
     # qDotDot = np.concatenate([(0, 0, 0), posDelta * 1, -qJoints * 0])
     # print("q", q)
     # print("qDot", qDot)
     # print(qDotDot)
-    qDotDot = qDotDot.clip(-1, 1)
-    # print(qDotDot)
-    qDotDot = np.zeros_like(qDotDot)
+    qDotDot = qDotDot.clip(-10, 10)
+    print(qDotDot)
+    # qDotDot = np.zeros_like(qDotDot)
     # qDotDot[6+parameterNames.index("l_arm_shx")] += 4
 
     # Calculate jacobian
@@ -131,15 +132,15 @@ while (1):
     rightJacobian = rootJacobian[iRight] # (6, 6)
     WA = np.concatenate((leftJacobian, rightJacobian), axis=0).transpose() # (6, 12)
     Wb = -gravityMoment - centroidalMomentum # (6,)
-    print("centroidalMomentum", centroidalMomentum)
+    # print("centroidalMomentum", centroidalMomentum)
     # print(gravityMoment)
     # print(centroidalMomentum)
     # Constrain M_z = 0
-    print("gravityMoment", gravityMoment)
+    # print("gravityMoment", gravityMoment)
     WA = np.concatenate((WA, np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]]), np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]])), axis=0)
     Wb = np.concatenate((Wb, [0, 0]))
     # Inequality constraints
-    mu = 0.3
+    mu = 0.4
     lBack = 0.2
     l = 0.2
     BA = np.array(([
@@ -194,12 +195,13 @@ while (1):
 
     # Calculating joint torques
     totalForce = inertiaForces + FGrav + Fwrists # (30, 6)
+    # print(wrists)
     # print(totalForce)
     jointTorques = np.zeros(30)
     for i in range(-1, 30):
         if i == -1:
             jointJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
-            print(-(totalForce[:, None, :] @ jointJacobian).sum(0))
+            # print(-(totalForce[:, None, :] @ jointJacobian).sum(0))
         else:
             jointJacobian = jacobian[:, :, 6+i:7+i]  # (30, 6, 1)
             # (30, 1, 6) * (30, 6, 1)
@@ -208,7 +210,6 @@ while (1):
     # jointTorques[parameterNames.index("l_leg_akx")] = 0
     # jointTorques[parameterNames.index("r_leg_aky")] = 0
     # jointTorques[parameterNames.index("r_leg_akx")] = 0
-    print(np.round(jointTorques))
     # if jointTorques[-2] < 0:
     #     # print(jacobianDot[0])
     #     # print(qDot)
@@ -216,7 +217,7 @@ while (1):
     while True:
         p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=jointTorques)
         p.stepSimulation()
-        time.sleep(dt * 100)
+        time.sleep(dt * 10)
         t += dt
         break
 
