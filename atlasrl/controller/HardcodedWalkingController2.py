@@ -44,6 +44,8 @@ while (1):
     jointPositions = [j[0] for j in jointStates]
     jointSpeeds = [j[1] for j in jointStates]
     jointTorques = [j[3] for j in jointStates]
+    iLeft = parameterNames.index("r_leg_akx")
+    iRight = parameterNames.index("l_leg_akx")
 
     q = np.array(list(baseOrn) + list(basePose) + list(jointPositions))
     
@@ -53,30 +55,11 @@ while (1):
     zeroVec30 = [0.] * 30
     zeroVec36 = [0.] * 36
 
-
-    # Solve kinematic constraints
-    qDotDot = np.concatenate([-10 * eulerAngles - 2 * np.array(baseOrnSpeed), posDelta - 2 * np.array(baseLinearSpeed), -qJoints * 10 - 1.0 * qDotJoints])
-    posDelta = np.array([-0.00, 0, 0.90]) - np.array(basePose)
-    posDelta *= np.array([10, 10, 5])
-    eulerAngles = np.array(p.getEulerFromQuaternion(baseOrn))
-    # qJoints[6] -= min(0.2 * t, 1.2)
-    # print(qDotDot)
-    # qDotDot = np.concatenate([(0, 0, 0), posDelta * 1, -qJoints * 0])
-    # print("q", q)
-    # print("qDot", qDot)
-    # print(qDotDot)
-    qDotDot = qDotDot.clip(-10, 10)
-    # print(qDotDot)
-    # qDotDot = np.zeros_like(qDotDot)
-    qDotDot[6+4] = -0.0 #2 * np.sin(t * 3)
-
     # Calculate jacobian
     jacobian = np.zeros((30, 6, 36))
-    # axis = np.zeros((30, 3))
     for i in range(30):
         (_, _, _, _, _, _, _, _, _, _, _, _, _, jointAxis, _, _, _) = p.getJointInfo(atlas, i)
         (linkWorldPos, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _,) = p.getLinkState(atlas, i)
-        # axis[i] = p.rotateVector(linkWorldOrn, np.array(jointAxis))
         jac_t, jac_r = p.calculateJacobian(atlas, i, linkInertiaPos, qJoints.tolist(), zeroVec30, zeroVec30)
         jac_t = np.array(jac_t)
         jac_r = np.array(jac_r)
@@ -85,19 +68,34 @@ while (1):
             jac_r[:, j] = p.rotateVector(baseOrn, jac_r[:, j].tolist())
         jacobian[i, :3] = jac_r
         jacobian[i, 3:] = jac_t
-    # print("jacobian")
-    # print(jacobian[0])
+
+    # Solve kinematic constraints
+    posDelta = np.array([-0.00, 0, 0.90]) - np.array(basePose)
+    posDelta *= np.array([10, 10, 5])
+    eulerAngles = np.array(p.getEulerFromQuaternion(baseOrn))
+    qDotDotRootJoint = np.concatenate([-10 * eulerAngles - 2 * np.array(baseOrnSpeed), posDelta - 2 * np.array(baseLinearSpeed)])
+    qDotDotUpperBody = (-qJoints * 10 - 1.0 * qDotJoints)[0:18]
+    qDotDotLeftFoot = np.zeros(6)
+    qDotDotRightFoot = np.zeros(6)
+    leftJacobian = jacobian[iLeft] # (6, 36)
+    rightJacobian = jacobian[iRight] # (6, 36)
+    KA = np.concatenate((leftJacobian, rightJacobian), axis=0) # (12,36)
+    Kb = np.concatenate((qDotDotLeftFoot, qDotDotRightFoot), axis=0) # (12,)
+    KbRed = np.copy(Kb)
+    KbRed -= KA[:, :6] @ qDotDotRootJoint
+    KbRed -= KA[:, 6:24] @ qDotDotUpperBody
+    KARed = KA[:, 24:]
+    qDotDotLegs = np.linalg.solve(KARed, KbRed)
+    qDotDot = np.concatenate((qDotDotRootJoint, qDotDotUpperBody, qDotDotLegs))
+    qDotDot = qDotDot.clip(-10, 10)
 
     # Calculate jacobian derivative
     v = jacobian @ qDot
     vAngular = v[:, :3] # (30, 3)
-    # vAngular2 = axis * qDotJoints[:, None]
     jacobianDot = np.zeros((30, 6, 36))
     for i in range(36):
         jacobianDot[:, 3:, i] = np.cross(vAngular, jacobian[:, 3:, i])
         jacobianDot[:, :3, i] = np.cross(vAngular, jacobian[:, :3, i]) # TODO: Verify if this is necessary
-    # print("jacobianDot")
-    # print(jacobianDot)
 
     # Calculating inertia and mass matrix and gravity matrix
     I = np.zeros((30, 6, 6))
@@ -106,46 +104,27 @@ while (1):
         (_, linkWorldOrn, linkInertiaPos, linkInertiaOrn, _, _,) = p.getLinkState(atlas, i)
         (mass, _, local_inertia_diagonal, local_inertia_pos, local_inertia_orn, _, _, _, _, _, _, _) = p.getDynamicsInfo(atlas, i)
         R = np.array(p.getMatrixFromQuaternion(linkWorldOrn)).reshape(3, 3) @ np.array(p.getMatrixFromQuaternion(local_inertia_orn)).reshape(3, 3)
-        # local_inertia_pos = p.rotateVector(linkWorldOrn, np.array(local_inertia_pos))
         I[i, 0:3, 0:3] = R @ np.diag(local_inertia_diagonal) @ np.linalg.inv(R)
-        # I[i, 0:3, 3:6] = skew(local_inertia_pos) * mass
-        # I[i, 3:6, 0:3] = skew(local_inertia_pos) * mass
         I[i, 3:6, 3:6] = np.eye(3) * mass
         FGrav[i, 5] = -9.81 * mass
 
     # Calculating forces
     # (30, 6) = (30, 6, 6) @ (30, 6, 36) @ (36) + (30, 6, 6) @ (30, 6, 36) @ (36) + (30, 6) * (30, 6, 36) @ (36)
     vDot = jacobian @ qDotDot + jacobianDot @ qDot # (30, 6)
-    # print("qDot")
-    # print(qDot)
-    # print("vDot")
-    # print(vDot)
     rootJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
     inertiaForces = -(I @ vDot[:, :, None])[:, :, 0] # (30, 6)
-    # inertiaForces *= 0 # TODO: Add centroidal Momentum
     centroidalMomentum = (inertiaForces[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
     gravityMoment = (FGrav[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
 
-    # Calculating Wrists
-    iLeft = parameterNames.index("r_leg_akx")
-    iRight = parameterNames.index("l_leg_akx")
-    # (leftWorldPos, leftWorldOrn, leftPos, _, _, _,) = p.getLinkState(atlas, iLeft)
-    # (rightWorldPos, rightWorldOrn, rightPos, _, _, _,) = p.getLinkState(atlas, iRight)
-    # leftPos = np.array(p.rotateVector(leftWorldOrn, leftPos)) + leftWorldPos
-    # rightPos = np.array(p.rotateVector(rightWorldOrn, rightPos)) + rightWorldPos
-    # MomentDirection = (leftPos - rightPos) / np.linalg.norm(leftPos - rightPos)
+    # Equality constraints for Wrists
     leftJacobian = rootJacobian[iLeft] # (6, 6)
     rightJacobian = rootJacobian[iRight] # (6, 6)
     WA = np.concatenate((leftJacobian, rightJacobian), axis=0).transpose() # (6, 12)
     Wb = -gravityMoment - centroidalMomentum # (6,)
-    # print("centroidalMomentum", centroidalMomentum)
-    # print(gravityMoment)
-    # print(centroidalMomentum)
-    # Constrain M_z = 0
-    # print("gravityMoment", gravityMoment)
     WA = np.concatenate((WA, np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]]), np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]])), axis=0)
     Wb = np.concatenate((Wb, [0, 0]))
-    # Inequality constraints
+
+    # Inequality constraints for Wrists
     mu = 0.4
     lBack = 0.2
     l = 0.2
@@ -170,56 +149,34 @@ while (1):
         [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, -lBack], # M_y < F_z * l
     ]))
     Bb = np.zeros(BA.shape[0])
-    # wrists = np.linalg.lstsq(WA, Wb, rcond=1)[0]
     weightMoment = 1
     weightForce = 0.001
     cost = np.array([weightMoment, weightMoment, weightMoment, weightForce, weightForce, weightForce, weightMoment, weightMoment, weightMoment, weightForce, weightForce, weightForce]) # Minimize the moments
-    # res = linprog(cost, A_eq=WA, b_eq=Wb, A_ub=BA, b_ub=Bb, bounds=(None, None), method="highs-ipm")
     res = solvers.qp(matrix(np.diag(cost)), matrix(np.zeros_like(cost)), matrix(BA), matrix(Bb), matrix(WA), matrix(Wb))
     if res["status"] == "optimal":
         wrists = np.array(res["x"])[:, 0]
     else:
-        # print(res)
         print("Infeasible")
         pass
-    # wrists = np.array(res["x"])[:, 0]
-    # wrists[0:5] *= 1.0
-    # wrists[6:11] *= 1.0
-    # break
     Fwrists = np.zeros((30, 6))
     Fwrists[iLeft] = wrists[:6]
     Fwrists[iRight] = wrists[6:]
-    # print(wrists @ WA.transpose() - Wb)
     # wrists @ WA.transpose() - Wb = 0
-    # FWrists @ rootJacobian + gravityMoment + centroidalMomentum = 0
+    # =>
     # FWrists @ rootJacobian + FGrav @ rootJacobian + inertiaForces @ rootJacobian = 0
-    # print("vdot", np.linalg.norm(vDot, axis=1))
-    # print(centroidalMomentum)
-    # print(gravityMoment)
-    # print(wrists)
-    # break
 
     # Calculating joint torques
     totalForce = inertiaForces + FGrav + Fwrists # (30, 6)
-    # print(wrists)
-    # print(totalForce)
     jointTorques = np.zeros(30)
     for i in range(-1, 30):
         if i == -1:
             jointJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
-            # print(-(totalForce[:, None, :] @ jointJacobian).sum(0))
+            # print(-(totalForce[:, None, :] @ jointJacobian).sum(0)) # This one should be 0 if everything went right
         else:
             jointJacobian = jacobian[:, :, 6+i:7+i]  # (30, 6, 1)
             # (30, 1, 6) * (30, 6, 1)
             jointTorques[i] = -(totalForce[:, None, :] @ jointJacobian).sum()
-    # jointTorques[parameterNames.index("l_leg_aky")] = 0
-    # jointTorques[parameterNames.index("l_leg_akx")] = 0
-    # jointTorques[parameterNames.index("r_leg_aky")] = 0
-    # jointTorques[parameterNames.index("r_leg_akx")] = 0
-    # if jointTorques[-2] < 0:
-    #     # print(jacobianDot[0])
-    #     # print(qDot)
-    #     break
+
     while True:
         p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=jointTorques)
         p.stepSimulation()
