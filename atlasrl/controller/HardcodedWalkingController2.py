@@ -42,17 +42,13 @@ def moveTowards(currentPoint: np.ndarray, targetPoint: np.ndarray, speed=1) -> n
 for j in range(-1, 30):
     p.changeDynamics(atlas, j, linearDamping=0, angularDamping=0, jointDamping=0, restitution=1)
 
-# childMatrix [:, i] is a 36 vector with 1 if joint is a child of i
-childMatrix = np.zeros((36, 36))
-for i in reversed(range(1, 36)):
-    if i >= 6:
-        (_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, parentIndex) = p.getJointInfo(atlas, i-6)
-        parentIndex += 6
-    else:
-        parentIndex = i - 1
-    childMatrix[i, i] = 1
-    childMatrix[:, parentIndex] += childMatrix[:, i]
-childMatrix[0, 0] += 1
+# childMatrix [:, i] is a 31 vector with 1 if link is a child of joint i
+childMatrix = np.zeros((31, 36))
+for i in reversed(range(0, 30)):
+    (_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, parentIndex) = p.getJointInfo(atlas, i)
+    childMatrix[1+i, 6+i] = 1
+    childMatrix[:, 6+parentIndex] += childMatrix[:, 6+i]
+childMatrix[:, 0:5] += 1
 
 p.resetJointState(atlas, 1, 0.0, 0)
 # p.resetJointState(atlas, 26, -1.0, 0) # Right foot in the air
@@ -205,6 +201,7 @@ while (1):
     qDotDotLegs = np.linalg.solve(KARed, KbRed)
     qDotDot = np.concatenate((qDotDotRootJoint, qDotDotUpperBody, qDotDotLegs))
     # qDotDot = qDotDot.clip(-1, 1)
+    # qDotDot = np.zeros_like(qDotDot)
 
     # Calculate jacobian derivative
     # (31, 3, 36) @ (36)
@@ -213,7 +210,6 @@ while (1):
     v = vRel.sum(-1)
     vLin = v[:, 3:] # (31, 3)
     vAngular = v[:, :3] # (31, 3)
-    axis = vAngular / np.linalg.norm(vAngular, axis=1, keepdims=True)
     jacobianDot = np.zeros((31, 6, 36))
     for i in range(36):
         # TODO: Verify if this is necessary, should be gyroscopic acceleration (spinning bicycle wheel angular momentum experiment)
@@ -221,13 +217,26 @@ while (1):
         # Centrifugal acceleration
         jacobianDot[:, 3:, i] = np.cross(vAngular, jacobian[:, 3:, i])
         # Coriolis acceleration
-        # Is omega cross vRel == axis cross r scalarProd vRel == (axis cross vRel) cdot r
+        # Is omega cross vRel == axis cross r scalarProd vRel == (omega cross vRel) cdot r cdot r
         # r = J_R cross J_L
-        relativeJointSpeeds = vRel[:, :, :] @ childMatrix[:, i] # (31, 6)
+        # Method 1
+        # relativeJointSpeeds = vRel[:, :, :] @ childMatrix[:, i] # (31, 6)
         # jacobianDot[:, 3:, i] += 2 * np.cross(vAngular[max(0, i-6)], relativeJointSpeeds[:, 3:]) # TODO: Figure out why this not works
-        for j in range(0, 31):
-            r = np.cross(jacobian[j, :3, i], jacobian[j, 3:, i])
-            jacobianDot[j, 3:, i] += 2 * np.dot(np.cross(jacobian[j, 3:, i], vLin[j]), r) * childMatrix[5+j, i]
+        # Method 2
+        # r = np.cross(jacobian[:, :3, i], jacobian[:, 3:, i]) # (31, 3)
+        # Method 3
+        # Todo: Get the link velocity instead
+        if i <= 5:
+            vLinI = baseLinearSpeed # Velocity of the joint base
+        else:
+            (_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, parentIndex) = p.getJointInfo(atlas, i-6)
+            vLinI = (vLin[1+parentIndex] + vLin[i-5]) / 2 # Velocity of the joint base
+        jacobianDot[:, 3:, i] += np.cross(jacobian[:, :3, i], vLin - vLinI)
+        # r = r / np.linalg.norm(r, axis=1, keepdims=True)
+        # Method 4
+        # jacobianDot[:, 3:, i] += 2 * (np.cross(vAngular, vLin) * r).sum(-1, keepdims=True) * childMatrix[:, i:i+1] * r
+        # Method 5
+        # jacobianDot[:, 3:, i] += 2 * np.cross(vAngular, vLin)
 
     # Calculating forces
     # (31, 6) = (31, 6, 6) @ (31, 6, 36) @ (36) + (31, 6, 6) @ (31, 6, 36) @ (36) + (31, 6) * (31, 6, 36) @ (36)
