@@ -226,7 +226,7 @@ while (1):
         relativeJointSpeeds = vRel[:, :, :] @ childMatrix[:, i] # (31, 6)
         # jacobianDot[:, 3:, i] += 2 * np.cross(vAngular[max(0, i-6)], relativeJointSpeeds[:, 3:]) # TODO: Figure out why this not works
         for j in range(0, 31):
-            r = np.cross(jacobianDot[j, :3, i], jacobianDot[j, 3:, i])
+            r = np.cross(jacobian[j, :3, i], jacobian[j, 3:, i])
             jacobianDot[j, 3:, i] += 2 * np.dot(np.cross(jacobian[j, 3:, i], vLin[j]), r) * childMatrix[5+j, i]
 
     # Calculating forces
