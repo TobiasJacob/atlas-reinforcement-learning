@@ -22,6 +22,7 @@ p.loadURDF("plane.urdf",[0,0,0], useFixedBase=True)
 p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=70, cameraPitch=-20, cameraTargetPosition=[0, 0, 0.5])
 p.setGravity(0,0,-9.81)
 
+np.set_printoptions(threshold=100000)
 np.set_printoptions(suppress=True)
 np.set_printoptions(linewidth=np.inf)
 np.set_printoptions(precision=4)
@@ -40,6 +41,18 @@ def moveTowards(currentPoint: np.ndarray, targetPoint: np.ndarray, speed=1) -> n
 
 for j in range(-1, 30):
     p.changeDynamics(atlas, j, linearDamping=0, angularDamping=0, jointDamping=0, restitution=1)
+
+# childMatrix [:, i] is a 36 vector with 1 if joint is a child of i
+childMatrix = np.zeros((36, 36))
+for i in reversed(range(1, 36)):
+    if i >= 6:
+        (_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, parentIndex) = p.getJointInfo(atlas, i-6)
+        parentIndex += 6
+    else:
+        parentIndex = i - 1
+    childMatrix[i, i] = 1
+    childMatrix[:, parentIndex] += childMatrix[:, i]
+childMatrix[0, 0] += 1
 
 p.resetJointState(atlas, 1, 0.0, 0)
 # p.resetJointState(atlas, 26, -1.0, 0) # Right foot in the air
@@ -91,7 +104,7 @@ while (1):
         FGrav[1+i, 5] = -9.81 * mass
 
     # Center of mass
-    rootJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
+    rootJacobian = jacobian[:, :, 0:6] # (31, 6, 6)
     centroidalMass = (I @ rootJacobian).sum(0)
     centroidalMassInertia = centroidalMass[3:6, 0:3]
     centroidalMassMass = centroidalMass[3:6, 3:6]
@@ -194,17 +207,32 @@ while (1):
     # qDotDot = qDotDot.clip(-1, 1)
 
     # Calculate jacobian derivative
-    v = jacobian @ qDot
-    vAngular = v[:, :3] # (30, 3)
+    # (31, 3, 36) @ (36)
+    vRel = jacobian * qDot # (31, 6, 36)
+    # axis = J_R cross J_L
+    v = vRel.sum(-1)
+    vLin = v[:, 3:] # (31, 3)
+    vAngular = v[:, :3] # (31, 3)
+    axis = vAngular / np.linalg.norm(vAngular, axis=1, keepdims=True)
     jacobianDot = np.zeros((31, 6, 36))
     for i in range(36):
+        # TODO: Verify if this is necessary, should be gyroscopic acceleration (spinning bicycle wheel angular momentum experiment)
+        jacobianDot[:, :3, i] = np.cross(vAngular, jacobian[:, :3, i])
+        # Centrifugal acceleration
         jacobianDot[:, 3:, i] = np.cross(vAngular, jacobian[:, 3:, i])
-        jacobianDot[:, :3, i] = np.cross(vAngular, jacobian[:, :3, i]) # TODO: Verify if this is necessary
+        # Coriolis acceleration
+        # Is omega cross vRel == axis cross r scalarProd vRel == (axis cross vRel) cdot r
+        # r = J_R cross J_L
+        relativeJointSpeeds = vRel[:, :, :] @ childMatrix[:, i] # (31, 6)
+        # jacobianDot[:, 3:, i] += 2 * np.cross(vAngular[max(0, i-6)], relativeJointSpeeds[:, 3:]) # TODO: Figure out why this not works
+        for j in range(0, 31):
+            r = np.cross(jacobianDot[j, :3, i], jacobianDot[j, 3:, i])
+            jacobianDot[j, 3:, i] += 2 * np.dot(np.cross(jacobian[j, 3:, i], vLin[j]), r) * childMatrix[5+j, i]
 
     # Calculating forces
-    # (30, 6) = (30, 6, 6) @ (30, 6, 36) @ (36) + (30, 6, 6) @ (30, 6, 36) @ (36) + (30, 6) * (30, 6, 36) @ (36)
-    vDot = jacobian @ qDotDot + jacobianDot @ qDot # (30, 6)
-    inertiaForces = -(I @ vDot[:, :, None])[:, :, 0] # (30, 6)
+    # (31, 6) = (31, 6, 6) @ (31, 6, 36) @ (36) + (31, 6, 6) @ (31, 6, 36) @ (36) + (31, 6) * (31, 6, 36) @ (36)
+    vDot = jacobian @ qDotDot + jacobianDot @ qDot # (31, 6)
+    inertiaForces = -(I @ vDot[:, :, None])[:, :, 0] # (31, 6)
     centroidalMomentum = (inertiaForces[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
     gravityMoment = (FGrav[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
 
@@ -269,15 +297,15 @@ while (1):
     # =>
     # FWrists @ rootJacobian + FGrav @ rootJacobian + inertiaForces @ rootJacobian = 0
     # Calculating joint torques
-    totalForce = inertiaForces + FGrav + Fwrists # (30, 6)
+    totalForce = inertiaForces + FGrav + Fwrists # (31, 6)
     jointTorques = np.zeros(30)
     for i in range(-1, 30):
         if i == -1:
-            jointJacobian = jacobian[:, :, 0:6] # (30, 6, 6)
+            jointJacobian = jacobian[:, :, 0:6] # (31, 6, 6)
             # print(-(totalForce[:, None, :] @ jointJacobian).sum(0)) # This one should be 0 if everything went right
         else:
-            jointJacobian = jacobian[:, :, 6+i:7+i]  # (30, 6, 1)
-            # (30, 1, 6) * (30, 6, 1)
+            jointJacobian = jacobian[:, :, 6+i:7+i]  # (31, 6, 1)
+            # (31, 1, 6) * (31, 6, 1)
             jointTorques[i] = -(totalForce[:, None, :] @ jointJacobian).sum()
     # jointTorques[-6:] *= 0
     while True:
