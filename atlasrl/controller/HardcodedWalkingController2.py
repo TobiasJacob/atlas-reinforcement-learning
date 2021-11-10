@@ -225,12 +225,10 @@ while (1):
         # Method 2
         # r = np.cross(jacobian[:, :3, i], jacobian[:, 3:, i]) # (31, 3)
         # Method 3
-        # Todo: Get the link velocity instead
         if i <= 5:
-            vLinI = baseLinearSpeed # Velocity of the joint base
+            vLinI = baseLinearSpeed
         else:
-            (_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, parentIndex) = p.getJointInfo(atlas, i-6)
-            vLinI = (vLin[1+parentIndex] + vLin[i-5]) / 2 # Velocity of the joint base
+            (_, _, _, _, _, _, vLinI, _) = p.getLinkState(atlas, i-6, computeLinkVelocity=True)
         jacobianDot[:, 3:, i] += np.cross(jacobian[:, :3, i], vLin - vLinI)
         # r = r / np.linalg.norm(r, axis=1, keepdims=True)
         # Method 4
