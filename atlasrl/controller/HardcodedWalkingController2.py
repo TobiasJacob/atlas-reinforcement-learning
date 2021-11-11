@@ -42,17 +42,7 @@ def moveTowards(currentPoint: np.ndarray, targetPoint: np.ndarray, speed=1) -> n
 for j in range(-1, 30):
     p.changeDynamics(atlas, j, linearDamping=0, angularDamping=0, jointDamping=0, restitution=1)
 
-# childMatrix [:, i] is a 31 vector with 1 if link is a child of joint i
-childMatrix = np.zeros((31, 36))
-for i in reversed(range(0, 30)):
-    (_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, parentIndex) = p.getJointInfo(atlas, i)
-    childMatrix[1+i, 6+i] = 1
-    childMatrix[:, 6+parentIndex] += childMatrix[:, 6+i]
-childMatrix[:, 0:5] += 1
-
 p.resetJointState(atlas, 1, 0.0, 0)
-# p.resetJointState(atlas, 26, -1.0, 0) # Right foot in the air
-# p.resetJointState(atlas, 27, 2.0, 0)
 state = "init"
 while (1):
     # Sensor readings
@@ -206,35 +196,21 @@ while (1):
     # Calculate jacobian derivative
     # (31, 3, 36) @ (36)
     vRel = jacobian * qDot # (31, 6, 36)
-    # axis = J_R cross J_L
     v = vRel.sum(-1)
     vLin = v[:, 3:] # (31, 3)
     vAngular = v[:, :3] # (31, 3)
     jacobianDot = np.zeros((31, 6, 36))
     for i in range(36):
-        # TODO: Verify if this is necessary, should be gyroscopic acceleration (spinning bicycle wheel angular momentum experiment)
+        # Gyroscopic acceleration (spinning bicycle wheel angular momentum experiment)
         jacobianDot[:, :3, i] = np.cross(vAngular, jacobian[:, :3, i])
         # Centrifugal acceleration
         jacobianDot[:, 3:, i] = np.cross(vAngular, jacobian[:, 3:, i])
         # Coriolis acceleration
-        # Is omega cross vRel == axis cross r scalarProd vRel == (omega cross vRel) cdot r cdot r
-        # r = J_R cross J_L
-        # Method 1
-        # relativeJointSpeeds = vRel[:, :, :] @ childMatrix[:, i] # (31, 6)
-        # jacobianDot[:, 3:, i] += 2 * np.cross(vAngular[max(0, i-6)], relativeJointSpeeds[:, 3:]) # TODO: Figure out why this not works
-        # Method 2
-        # r = np.cross(jacobian[:, :3, i], jacobian[:, 3:, i]) # (31, 3)
-        # Method 3
         if i <= 5:
             vLinI = baseLinearSpeed
         else:
             (_, _, _, _, _, _, vLinI, _) = p.getLinkState(atlas, i-6, computeLinkVelocity=True)
         jacobianDot[:, 3:, i] += np.cross(jacobian[:, :3, i], vLin - vLinI)
-        # r = r / np.linalg.norm(r, axis=1, keepdims=True)
-        # Method 4
-        # jacobianDot[:, 3:, i] += 2 * (np.cross(vAngular, vLin) * r).sum(-1, keepdims=True) * childMatrix[:, i:i+1] * r
-        # Method 5
-        # jacobianDot[:, 3:, i] += 2 * np.cross(vAngular, vLin)
 
     # Calculating forces
     # (31, 6) = (31, 6, 6) @ (31, 6, 36) @ (36) + (31, 6, 6) @ (31, 6, 36) @ (36) + (31, 6) * (31, 6, 36) @ (36)
@@ -314,12 +290,9 @@ while (1):
             jointJacobian = jacobian[:, :, 6+i:7+i]  # (31, 6, 1)
             # (31, 1, 6) * (31, 6, 1)
             jointTorques[i] = -(totalForce[:, None, :] @ jointJacobian).sum()
-    # jointTorques[-6:] *= 0
     while True:
         p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=jointTorques)
         p.stepSimulation()
         time.sleep(dt * 1)
         t += dt
         break
-
-
