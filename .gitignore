@@ -131,3 +131,4 @@ dmypy.json
 test.ipynb
 runs
 *.torch
+*.mp4

@@ -96,11 +96,11 @@ class MotionState:
 
         leftShoulder = convertQuaternionToAtlasEulerBack(self.leftShoulderRotation)
         rightShoulder = convertQuaternionToAtlasEulerBack(self.rightShoulderRotation)
-        angles[parameterIndex["l_arm_shx"]] = convertActionSpaceToAngle("l_arm_shx", -1)
+        angles[parameterIndex["l_arm_shx"]] = leftShoulder[0]
         angles[parameterIndex["l_arm_shz"]] = leftShoulder[2]
         angles[parameterIndex["l_arm_ely"]] = convertActionSpaceToAngle("l_arm_shx", 1)
         angles[parameterIndex["l_arm_elx"]] = self.leftElbowRotation
-        angles[parameterIndex["r_arm_shx"]] = convertActionSpaceToAngle("l_arm_shx", 1)
+        angles[parameterIndex["r_arm_shx"]] = rightShoulder[0]
         angles[parameterIndex["r_arm_shz"]] = rightShoulder[2]
         angles[parameterIndex["r_arm_ely"]] = convertActionSpaceToAngle("l_arm_shx", -1)
         angles[parameterIndex["r_arm_elx"]] = self.leftElbowRotation
@@ -136,11 +136,11 @@ class MotionState:
 
         leftShoulder = convertQuaternionToAtlasEulerBack(self.leftShoulderRotation)
         rightShoulder = convertQuaternionToAtlasEulerBack(self.rightShoulderRotation)
-        action[parameterIndex["l_arm_shx"]] = -1
+        action[parameterIndex["l_arm_shx"]] = convertAngleToActionSpace("l_arm_shx", leftShoulder[0] - np.pi / 2 * 0.8)
         action[parameterIndex["l_arm_shz"]] = convertAngleToActionSpace("l_arm_shz", leftShoulder[2])
         action[parameterIndex["l_arm_ely"]] = 1
         action[parameterIndex["l_arm_elx"]] = convertAngleToActionSpace("l_arm_elx", self.leftElbowRotation)
-        action[parameterIndex["r_arm_shx"]] = 1
+        action[parameterIndex["r_arm_shx"]] = convertAngleToActionSpace("r_arm_shx", rightShoulder[0] + np.pi / 2 * 0.8)
         action[parameterIndex["r_arm_shz"]] = convertAngleToActionSpace("r_arm_shz", rightShoulder[2])
         action[parameterIndex["r_arm_ely"]] = -1
         action[parameterIndex["r_arm_elx"]] = convertAngleToActionSpace("r_arm_elx", self.leftElbowRotation)

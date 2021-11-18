@@ -36,7 +36,7 @@ class AtlasBulletEnv(gym.Env):
 		self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
 		self._p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
 		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [0, 0, 1.0])
-		# self.plane = self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
+		self.plane = self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
 		self._p.setTimeStep(1/(controlFreq * simStepsPerControlStep))
 		self._p.setGravity(0,0,-9.81)
 		self.action_space = gym.spaces.Box(low=-1, high=1, shape=(30,))
