@@ -14,7 +14,7 @@ path = "data/atlas/atlas_v4_with_multisense.urdf"
 
 fps = 60
 dt = 1. / fps
-p.connect(p.GUI, options="--width=1280 --height=720 --mp4=\"test.mp4\" --mp4fps=60")
+p.connect(p.GUI)#, options="--width=1280 --height=720 --mp4=\"test.mp4\" --mp4fps=60")
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.loadURDF("plane.urdf",[0,0,0], useFixedBase=True)
 atlas = p.loadURDF(path, [0, 0, 0.95])
