@@ -255,7 +255,7 @@ while (1):
             # print(wrists)
         else:
             print("Infeasible")
-            exit(0)
+            # exit(0)
             pass
         Fwrists[1+iLeft] = wrists[:6]
         Fwrists[1+iRight] = wrists[6:]

@@ -18,13 +18,13 @@ def getBullentEnv(index: int):
 
 if __name__ == "__main__":
     # env = AtlasBulletEnv(render=True)
-    if False: # Set True for training
-        log_dir = f"runs/littleRandomization-{datetime.datetime.now()}"
+    if True: # Set True for training
+        log_dir = f"runs/noRandomization-{datetime.datetime.now()}"
         os.makedirs(log_dir, exist_ok=True)
         env = SubprocVecEnv([getBullentEnv(i) for i in range(16)]) 
         env = VecCheckNan(env, raise_exception=True)
         startI = 0
-        if True: # Use a pre-trained model, don't forget to set i=1:1000
+        if False: # Use a pre-trained model, don't forget to set i=1:1000
             model = PPO.load("runs/littleRandomization-2021-11-02 01:18:17.536564/ModelTrained24M.torch")
             model.env = env
             model.learn(total_timesteps=1000000)

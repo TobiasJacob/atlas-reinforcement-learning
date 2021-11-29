@@ -35,7 +35,7 @@ class AtlasBulletEnv(gym.Env):
 			self._p = BulletClient()
 		self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
 		self._p.configureDebugVisualizer(p.COV_ENABLE_RENDERING,0)
-		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [0, 0, 1.0])
+		self.atlas = self._p.loadURDF("data/atlas/atlas_v4_with_multisense.urdf", [0, 0, 0.92])
 		self.plane = self._p.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
 		self._p.setTimeStep(1/(controlFreq * simStepsPerControlStep))
 		self._p.setGravity(0,0,-9.81)
@@ -179,11 +179,11 @@ class AtlasBulletEnv(gym.Env):
 
 		# Check for termination because of ground contacts
 		done = False
-		# robot_ground_contacts = self._p.getContactPoints(bodyA=self.atlas, bodyB=self.plane)
-		# for contact in robot_ground_contacts:
-		# 	if contact[3] not in self.footLinks:
-		# 		done = True
-		# 		break
+		robot_ground_contacts = self._p.getContactPoints(bodyA=self.atlas, bodyB=self.plane)
+		for contact in robot_ground_contacts:
+			if contact[3] not in self.footLinks:
+				done = True
+				break
 
 		# Logging
 		if self.isRender:
