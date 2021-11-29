@@ -4,16 +4,18 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import time,math
-from atlasrl.robots.Constants import parameterNames
+from atlasrl.robots.Constants import PARAMETER_NAMES, parameterNames
 from scipy.optimize import linprog
 from cvxopt import matrix, solvers
+
+from atlasrl.utils.CubicSpline import cube, cubeDeriv, cubeDerivDeriv, solveCubicInterpol
 solvers.options['show_progress'] = False # Prevent printing
 
 path = "data/atlas/atlas_v4_with_multisense.urdf"
 
 p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
-atlas = p.loadURDF(path, [0, 0, 0.95])
+atlas = p.loadURDF(path, [0, 0, 0.92])
 
 p.setJointMotorControlArray(atlas, np.arange(30), p.POSITION_CONTROL, forces=np.zeros(30,))
 dt = 0.01
@@ -28,6 +30,9 @@ np.set_printoptions(suppress=True)
 np.set_printoptions(linewidth=np.inf)
 np.set_printoptions(precision=4)
 t=0
+tStart = -1
+tEnd = -1
+nextPhase = "idle"
 
 def skew(x):
     return np.array([[0, -x[2], x[1]],
@@ -51,7 +56,10 @@ def walkingDecision(phase: int) -> Tuple[np.ndarray, np.ndarray]:
 for j in range(-1, 30):
     p.changeDynamics(atlas, j, linearDamping=0, angularDamping=0, jointDamping=0, restitution=1)
 
-p.resetJointState(atlas, 1, 0.0, 0)
+p.resetJointState(atlas, PARAMETER_NAMES.index("l_leg_hpy"), -0.15, 0)
+p.resetJointState(atlas, PARAMETER_NAMES.index("l_leg_kny"), 0.3, 0)
+p.resetJointState(atlas, PARAMETER_NAMES.index("r_leg_hpy"), -0.15, 0)
+p.resetJointState(atlas, PARAMETER_NAMES.index("r_leg_kny"), 0.3, 0)
 state = "init"
 while (1):
     # Sensor readings
@@ -107,7 +115,7 @@ while (1):
     centerOfMass = np.array(basePose) + (centerOfMassSkewToRoot[1, 2], centerOfMassSkewToRoot[0, 2], centerOfMassSkewToRoot[0, 1])
 
     # Desired state
-    # (centerOfMass, baseLinearSpeed, baseOrn, baseOrnSpeed)
+    # (basePose, baseLinearSpeed, baseOrn, baseOrnSpeed)
     # (qJoints, qDotJoints) = (qJoints, qDotJoints)
     (leftFootWorldPos, leftFootWorldOrn, _, _, _, _, leftFootLinearVelocity, leftFootAngularVelocity) = p.getLinkState(atlas, iLeft, computeLinkVelocity=True)
     (rightFootWorldPos, rightFootWorldOrn, _, _, _, _, rightFootLinearVelocity, rightFootAngularVelocity) = p.getLinkState(atlas, iRight, computeLinkVelocity=True)
@@ -120,15 +128,46 @@ while (1):
     desiredRightFootSpeed = np.zeros(3) # Not using angular velocity yet
     desiredUpperBodyAngles = np.zeros(18)
     desiredUpperBodyVelocity = np.zeros(18)
-    currentFoot = "b"
+
+    # Here comes the interesting part
+    if t > tEnd:
+        print(nextPhase)
+        currentFoot = "b"
+        if nextPhase == "idle":
+            tPhase = 4.0
+            baseABGD = solveCubicInterpol(basePose, baseLinearSpeed, np.array([0, 0, 0.9]), np.array([0.0, 0, 0]), tPhase)
+            rFootABGD = solveCubicInterpol(rightFootWorldPos, np.array([0, 0, 0]), rightFootWorldPos, np.array([0, 0, 0]), tPhase)
+            lFootABGD = solveCubicInterpol(leftFootWorldPos, np.array([0, 0, 0]), leftFootWorldPos, np.array([0, 0, 0]), tPhase)
+            nextPhase = "swingUp"
+        elif nextPhase == "swingUp":
+            tPhase = 0.5
+            baseABGD = solveCubicInterpol(basePose, baseLinearSpeed, basePose + np.array([0.06, -0.02, 0]), np.array([0.3, -0.1, 0]), tPhase)
+            rFootABGD = solveCubicInterpol(rightFootWorldPos, np.array([0, 0, 0]), rightFootWorldPos, np.array([0, 0, 0]), tPhase)
+            lFootABGD = solveCubicInterpol(leftFootWorldPos, np.array([0, 0, 0]), leftFootWorldPos, np.array([0, 0, 0]), tPhase)
+            nextPhase = "rUp"
+        elif nextPhase == "rUp":
+            tPhase = 0.9
+            baseABGD = solveCubicInterpol(basePose, baseLinearSpeed, basePose + np.array([0.1, 0, 0]), np.array([0.4, 0.1, 0]), tPhase)
+            rFootABGD = solveCubicInterpol(rightFootWorldPos, np.array([0, 0, 0]), rightFootWorldPos, np.array([0, 0, 0]), tPhase)
+            lFootABGD = solveCubicInterpol(leftFootWorldPos + np.array([0, 0, 0.005]), np.array([0, 0, 0]), rightFootWorldPos + np.array([0.0, 0.22, 0.2]), np.array([0, 0, 0.0]), tPhase)
+            nextPhase = "rDown"
+            currentFoot = "r"
+        tStart = t
+        tEnd = tStart + tPhase
+
+    desiredWorldPos, desiredWorldPosSpeed, desiredWorldPosAcc = cube(*baseABGD, t - tStart), cubeDeriv(*baseABGD, t - tStart), cubeDerivDeriv(*baseABGD, t - tStart)
+    # print(desiredWorldPos, desiredWorldPosSpeed)
+    desiredRightFootPos, desiredRightFootSpeed, desiredRightFootAcc = cube(*rFootABGD, t - tStart), cubeDeriv(*rFootABGD, t - tStart), cubeDerivDeriv(*rFootABGD, t - tStart)
+    desiredLeftFootPos, desiredLeftFootSpeed, desiredLeftFootAcc = cube(*lFootABGD, t - tStart), cubeDeriv(*lFootABGD, t - tStart), cubeDerivDeriv(*lFootABGD, t - tStart)
+    print(desiredWorldPos, desiredWorldPosSpeed, desiredWorldPosAcc, desiredLeftFootPos, desiredLeftFootSpeed, desiredLeftFootAcc)
 
     # PD Acceleration controller
-    kp = 10
-    kd = 3
-    qDotDotRootJoint = np.concatenate([-kp * (np.array(p.getEulerFromQuaternion(baseOrn))) - kd * np.array(baseOrnSpeed), kp * (desiredWorldPos - centerOfMass) + kd * (desiredWorldPosSpeed - np.array(baseLinearSpeed))])
+    kp = 3.0
+    kd = 0.5
+    qDotDotRootJoint = np.concatenate([-kp * (np.array(p.getEulerFromQuaternion(baseOrn))) - kd * np.array(baseOrnSpeed), kp * (desiredWorldPos - basePose) + kd * (desiredWorldPosSpeed - np.array(baseLinearSpeed)) + desiredWorldPosAcc])
     qDotDotUpperBody = (kp * (desiredUpperBodyAngles - qJoints[0:18]) + kd * (desiredUpperBodyVelocity - qDotJoints[0:18]))
-    qDotDotLeftFoot = np.concatenate([-kp * (np.array(p.getEulerFromQuaternion(leftFootWorldOrn))) - kd * np.array(leftFootAngularVelocity), kp * (desiredLeftFootPos - leftFootWorldPos) + kd * (desiredLeftFootSpeed - np.array(leftFootLinearVelocity))])
-    qDotDotRightFoot = np.concatenate([-kp * (np.array(p.getEulerFromQuaternion(rightFootWorldOrn))) - kd * np.array(rightFootAngularVelocity), kp * (desiredRightFootPos - rightFootWorldPos) + kd * (desiredRightFootSpeed - np.array(rightFootLinearVelocity))])
+    qDotDotLeftFoot = np.concatenate([-kp * (np.array(p.getEulerFromQuaternion(leftFootWorldOrn))) - kd * np.array(leftFootAngularVelocity), kp * (desiredLeftFootPos - leftFootWorldPos) + kd * (desiredLeftFootSpeed - np.array(leftFootLinearVelocity)) + desiredLeftFootAcc])
+    qDotDotRightFoot = np.concatenate([-kp * (np.array(p.getEulerFromQuaternion(rightFootWorldOrn))) - kd * np.array(rightFootAngularVelocity), kp * (desiredRightFootPos - rightFootWorldPos) + kd * (desiredRightFootSpeed - np.array(rightFootLinearVelocity)) + desiredRightFootAcc])
 
     # Solve kinematic constraints
     leftJacobian = jacobian[1+iLeft] # (6, 36)
@@ -213,9 +252,10 @@ while (1):
         res = solvers.qp(matrix(np.diag(cost)), matrix(np.zeros_like(cost)), matrix(BA), matrix(Bb), matrix(WA), matrix(Wb))
         if res["status"] == "optimal":
             wrists = np.array(res["x"])[:, 0]
-            print(wrists)
+            # print(wrists)
         else:
             print("Infeasible")
+            exit(0)
             pass
         Fwrists[1+iLeft] = wrists[:6]
         Fwrists[1+iRight] = wrists[6:]
@@ -244,6 +284,6 @@ while (1):
     while True:
         p.setJointMotorControlArray(atlas, np.arange(30), p.TORQUE_CONTROL, forces=jointTorques)
         p.stepSimulation()
-        time.sleep(dt * 1)
+        time.sleep(dt * (4 if t > 3 else 1))
         t += dt
         break

@@ -33,6 +33,8 @@ parameterNames = [
     'r_leg_akx'
 ]
 
+PARAMETER_NAMES = parameterNames
+
 controllerGains = {
     "l_leg_aky": 400.0,
     "r_leg_aky": 400.0,
