@@ -1,4 +1,6 @@
 from typing import List
+
+import quaternion
 from atlasrl.motions.MotionState import MotionState
 import json
 from dataclasses import dataclass
@@ -20,6 +22,13 @@ import numpy as np
 # left ankle rotation (4D),
 # left shoulder rotation (4D),
 # left elbow rotation (1D)
+
+def r2ppos(pos: np.array):
+    return [pos[0], -pos[2], pos[1]]
+
+def r2p(q: quaternion.quaternion):
+    q = quaternion.as_float_array(q).tolist()
+    return q[1:4] + q[0:1]
 
 @dataclass
 class MotionReader:
@@ -53,4 +62,5 @@ class MotionReader:
         alpha = (time - row1.absoluteTime) / (row2.absoluteTime - row1.absoluteTime)
         result = MotionState.fromInterpolation(row1, row2, alpha)
         result.rootPosition += loops * (self.frames[-1].rootPosition - self.frames[0].rootPosition)
+        result.rootPosition = r2ppos(result.rootPosition) + np.array([0, 0, 0.1])
         return result

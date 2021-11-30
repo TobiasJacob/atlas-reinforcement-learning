@@ -173,7 +173,7 @@ class AtlasBulletEnv(gym.Env):
 		rootSpeedDif = np.square(posSpeed - desiredBaseSpeed).mean()
 		rewardRootSpeedDif = np.exp(-2 * rootSpeedDif)
 
-		reward = 0.6 * rewardJoint + 0.1 * rewardJointSpeed + 0.1 * rewardGlobalRotDiff + 0.1 * rewardRootPosDiff + 0.1 * rewardRootSpeedDif
+		reward = 0.4 * rewardJoint + 0.1 * rewardJointSpeed + 0.3 * rewardGlobalRotDiff + 0.1 * rewardRootPosDiff + 0.1 * rewardRootSpeedDif
 		if np.isnan(reward):
 			reward = 0
 

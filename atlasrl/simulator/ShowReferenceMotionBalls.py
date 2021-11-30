@@ -6,7 +6,7 @@ import pybullet_data
 import time,math
 
 import quaternion
-from atlasrl.motions.MotionReader import MotionReader
+from atlasrl.motions.MotionReader import MotionReader, r2p, r2ppos
 from itertools import cycle
 
 clip = MotionReader.readClip()
@@ -37,13 +37,6 @@ for i in range(len(action)):
     action_selector_id = p.addUserDebugParameter(paramName=str(i), rangeMin=-1, rangeMax=1, startValue=0)
     action_selector_ids.append(action_selector_id)
 
-def r2p(q: quaternion.quaternion):
-    q = quaternion.as_float_array(q).tolist()
-    return q[1:4] + q[0:1]
-
-def r2ppos(pos: np.array):
-    return [pos[0], -pos[2], pos[1]]
-
 t = 0
 while True:
     for j in range(len(action)):
@@ -52,10 +45,8 @@ while True:
     frame = clip.getState(t)
 
     cycleI = i // len(clip.frames)
-    basePos, baseOrn = [0, 0, 0], r2p(quaternion.from_rotation_vector([np.pi / 2, 0, 0]))
-    rootPosOffset = np.array(clip.frames[-1].rootPosition) * cycleI
-    cycleRootPos = [frame.rootPosition[0] + rootPosOffset[0], frame.rootPosition[1], frame.rootPosition[2] + rootPosOffset[2]]
-    rootPos, rootOrn = p.multiplyTransforms(basePos, baseOrn, cycleRootPos, r2p(frame.rootRotation))
+    basePos, baseOrn = frame.rootPosition, r2p(quaternion.from_rotation_vector([np.pi / 2, 0, 0]))
+    rootPos, rootOrn = p.multiplyTransforms(basePos, baseOrn, [0, 0, 0], r2p(frame.rootRotation))
     chestPos, chestOrn = p.multiplyTransforms(rootPos, rootOrn, [0.0, 0.2, 0], r2p(frame.chestRotation))
     neckPos, neckOrn = p.multiplyTransforms(chestPos, chestOrn, [0, 0.2, 0], r2p(frame.neckRotation))
 
@@ -93,7 +84,7 @@ while True:
     p.resetDebugVisualizerCamera(cameraDistance=2, cameraYaw=60, cameraPitch=-30, cameraTargetPosition=rootPos)
 
     angles = frame.getAngles()
-    p.resetBasePositionAndOrientation(atlas, r2ppos(frame.rootPosition) + np.array([0, 1, 0.1]), r2p(frame.rootRotation))
+    p.resetBasePositionAndOrientation(atlas, frame.rootPosition + np.array([0, 1, 0]), r2p(frame.rootRotation))
     for i in range(30):
         p.resetJointState(atlas, i, angles[i])
     time.sleep(dt)
