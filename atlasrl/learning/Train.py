@@ -18,8 +18,8 @@ def getBullentEnv(index: int):
 
 if __name__ == "__main__":
     # env = AtlasBulletEnv(render=True)
-    if True: # Set True for training
-        log_dir = f"runs/noRandomization-{datetime.datetime.now()}"
+    if False: # Set True for training
+        log_dir = f"runs/moreWeightOnJointDiff-{datetime.datetime.now()}"
         os.makedirs(log_dir, exist_ok=True)
         env = SubprocVecEnv([getBullentEnv(i) for i in range(16)]) 
         env = VecCheckNan(env, raise_exception=True)
@@ -51,8 +51,8 @@ if __name__ == "__main__":
             model.learn(total_timesteps=1000000, reset_num_timesteps=False)
             model.save(f"{log_dir}/ModelTrained{i + 1}M.torch")
 
-    model = PPO.load(f"runs/littleRandomization-2021-11-02 13:08:26.771580/ModelTrained32M.torch")
-    env = getBullentEnv(0)()
+    model = PPO.load(f"runs/moreWeightOnJointDiff-2021-11-30 19:26:22.352304/ModelTrained32M.torch")
+    env = AtlasBulletEnv(render=True, video=True)
 
     obs = env.reset()
     while True:

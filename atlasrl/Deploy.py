@@ -27,7 +27,7 @@ if __name__ == "__main__":
         policy_kwargs={"log_std_init": -2.5},
         tensorboard_log="runs/" + str(datetime.now())
     )
-    model = PPO.load(f"runs/littleRandomization-2021-11-02 13:08:26.771580/ModelTrained32M.torch")
+    model = PPO.load(f"runs/moreWeightOnJointDiff-2021-11-30 19:26:22.352304/ModelTrained32M.torch")
 
     obs = env.reset()
     obsDC = envDC.reset(randomStartPosition=False)
@@ -46,8 +46,8 @@ if __name__ == "__main__":
         if i < 1000:
             envDC._p.resetBasePositionAndOrientation(envDC.atlas, np.array([0, 0, Z + 0.03]), np.array([*orn[1:4], orn[0]]))
             envDC._p.resetBaseVelocity(envDC.atlas, baseSpeed, baseOrn)
-            for i in range(30):
-                envDC._p.resetJointState(envDC.atlas, i, jointAngles[i], jointSpeeds[i])
+            for j in range(30):
+                envDC._p.resetJointState(envDC.atlas, j, jointAngles[j], jointSpeeds[j])
         obsDC, _, _, _ = envDC.step(action)
         # obsDC = envDC.getObservation()[0]
         # envDC.time = env.time

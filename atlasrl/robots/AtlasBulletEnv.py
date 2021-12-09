@@ -21,7 +21,7 @@ class AtlasBulletEnv(gym.Env):
 		'video.frames_per_second': 60
 	}
 
-	def __init__(self, render=False, controlFreq=30., simStepsPerControlStep=30):
+	def __init__(self, render=False, controlFreq=30., simStepsPerControlStep=30, video=False):
 		super().__init__()
 		if render:
 			self.logger = SummaryWriter(f"runs/{datetime.datetime.now()}")
@@ -30,7 +30,10 @@ class AtlasBulletEnv(gym.Env):
 		self.isRender = render
 		self.simStepsPerControlStep = simStepsPerControlStep
 		if self.isRender:
-			self._p = BulletClient(connection_mode=p.GUI)
+			if video:
+				self._p = BulletClient(p.GUI, options="--width=1280 --height=720 --mp4=\"atlasrl.mp4\" --mp4fps=60")
+			else:
+				self._p = BulletClient(connection_mode=p.GUI)
 		else:
 			self._p = BulletClient()
 		self._p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -173,7 +176,7 @@ class AtlasBulletEnv(gym.Env):
 		rootSpeedDif = np.square(posSpeed - desiredBaseSpeed).mean()
 		rewardRootSpeedDif = np.exp(-2 * rootSpeedDif)
 
-		reward = 0.4 * rewardJoint + 0.1 * rewardJointSpeed + 0.3 * rewardGlobalRotDiff + 0.1 * rewardRootPosDiff + 0.1 * rewardRootSpeedDif
+		reward = 0.5 * rewardJoint + 0.1 * rewardJointSpeed + 0.1 * rewardGlobalRotDiff + 0.1 * rewardRootPosDiff + 0.2 * rewardRootSpeedDif
 		if np.isnan(reward):
 			reward = 0
 
