@@ -86,6 +86,7 @@ while (1):
         R = np.array(p.getMatrixFromQuaternion(linkWorldOrn)).reshape(3, 3) @ np.array(p.getMatrixFromQuaternion(local_inertia_orn)).reshape(3, 3)
         I[1+i, 0:3, 0:3] = R @ np.diag(local_inertia_diagonal) @ np.linalg.inv(R)
         I[1+i, 3:6, 3:6] = np.eye(3) * mass
+        # TODO: Use local inertia pose local_inertia_pos
         FGrav[1+i, 5] = -9.81 * mass
 
     # Center of mass
