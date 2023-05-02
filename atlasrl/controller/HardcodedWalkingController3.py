@@ -209,13 +209,13 @@ while (1):
     centroidalMomentum = (inertiaForces[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
     gravityMoment = (FGrav[:, None, :] @ rootJacobian).sum(0)[0] # (6,)
 
-    # Equality constraints for Wrists
+    # Equality constraints for Wrenchs
     leftJacobian = rootJacobian[1+iLeft] # (6, 6)
     rightJacobian = rootJacobian[1+iRight] # (6, 6)
     WA = np.concatenate((leftJacobian, rightJacobian), axis=0).transpose() # (6, 12)
     Wb = -gravityMoment - centroidalMomentum # (6,)
 
-    # Inequality constraints for Wrists
+    # Inequality constraints for Wrenchs
     Fwrists = np.zeros((31, 6))
     if currentFoot == "b":
         WA = np.concatenate((WA, np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]]), np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]])), axis=0)
@@ -269,7 +269,7 @@ while (1):
         raise NotImplementedError()
     # wrists @ WA.transpose() - Wb = 0
     # =>
-    # FWrists @ rootJacobian + FGrav @ rootJacobian + inertiaForces @ rootJacobian = 0
+    # FWrenchs @ rootJacobian + FGrav @ rootJacobian + inertiaForces @ rootJacobian = 0
     # Calculating joint torques
     totalForce = inertiaForces + FGrav + Fwrists # (31, 6)
     jointTorques = np.zeros(30)
